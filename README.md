@@ -33,6 +33,15 @@ sekmet peers test my-his                            # CapabilityStatement + SMAR
 sekmet scenario run all --peer my-his               # exit code 1 on any failure; reports in ./reports/
 ```
 
+## Documentation
+
+- [docs/operations.md](docs/operations.md): install, commands, procedure for a new system, configuration
+  reference, result statuses, troubleshooting, public-repo rules.
+- [docs/scenarios.md](docs/scenarios.md): scenario catalogue with known peer behaviour, authoring reference,
+  portability rules.
+- [docs/testing-log.md](docs/testing-log.md): per-server test rounds, behaviour matrix, and what each round
+  changed in SEKMET.
+
 ## What it covers
 
 | Flow | Workflows (`sekmet workflow list`) | Resources |

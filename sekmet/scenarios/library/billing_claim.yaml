@@ -12,7 +12,7 @@ steps:
     args: {patient: "${reg.patient.id}", encounter: "${visit.encounter.id}", account: "${acct.account.id}", code: CONSULT}
   - name: ChargeItems searchable by account
     request: {method: GET, path: ChargeItem, params: {account: "Account/${acct.account.id}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(ChargeItem).count() = 1"]}
   - name: Submit claim
     action: billing.claim
     args: {patient: "${reg.patient.id}", coverage: "${cov.coverage.id}", encounter: "${visit.encounter.id}"}

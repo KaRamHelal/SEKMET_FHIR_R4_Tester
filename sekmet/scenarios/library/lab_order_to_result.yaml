@@ -25,7 +25,7 @@ steps:
     expect: {on: diagnostic_report, fhirpath: ["DiagnosticReport.status = 'final'", "DiagnosticReport.result.count() = 4"]}
   - name: Observations searchable by based-on
     request: {method: GET, path: Observation, params: {based-on: "ServiceRequest/${order.service_request.id}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 4"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Observation).count() = 4"]}
   - name: DiagnosticReport by patient + category with _include results
     request:
       method: GET
@@ -34,7 +34,7 @@ steps:
     expect:
       status: 200
       fhirpath:
-        - "Bundle.entry.where(search.mode = 'match').count() = 1"
+        - "Bundle.entry.resource.ofType(DiagnosticReport).count() = 1"
         - "Bundle.entry.resource.ofType(Observation).count() = 4"
   - name: Order and task completed
     request: {method: GET, path: "ServiceRequest/${order.service_request.id}"}

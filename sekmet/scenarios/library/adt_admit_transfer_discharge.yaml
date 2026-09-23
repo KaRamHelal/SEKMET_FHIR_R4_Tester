@@ -6,7 +6,7 @@ steps:
   - {name: Register patient (A04), action: adt.register_patient, save: reg}
   - name: Find patient by MRN
     request: {method: GET, path: Patient, params: {identifier: "${ids.mrn}|${reg.mrn}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Patient).count() = 1"]}
   - name: Admit (A01)
     action: adt.admit
     args: {patient: "${reg.patient.id}", bed: bed-401-1}

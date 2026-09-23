@@ -12,11 +12,11 @@ steps:
   - {name: Dispense, action: meds.dispense, args: {medication_request: "${rx.medication_request.id}"}, save: disp}
   - name: Dispense searchable by prescription
     request: {method: GET, path: MedicationDispense, params: {prescription: "MedicationRequest/${rx.medication_request.id}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(MedicationDispense).count() = 1"]}
   - {name: Administer, action: meds.administer, args: {medication_request: "${rx.medication_request.id}"}}
   - name: Administration searchable by patient
     request: {method: GET, path: MedicationAdministration, params: {patient: "Patient/${reg.patient.id}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() >= 1"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(MedicationAdministration).count() >= 1"]}
   - name: Stop therapy
     action: meds.stop
     args: {medication_request: "${rx.medication_request.id}"}

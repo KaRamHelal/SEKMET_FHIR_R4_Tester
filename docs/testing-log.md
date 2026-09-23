@@ -1,8 +1,25 @@
 # Testing log: what testing SEKMET against real servers taught us
 
 Each round runs the scenario library against one independent FHIR implementation. Findings are split into
-**SEKMET fixes** (bugs or gaps in the tester, fixed in code) and **peer behaviour** (reported, never adapted to).
-Only public test servers are recorded here.
+**SEKMET fixes** (bugs or gaps in the tester, fixed in code with a test) and **peer behaviour** (reported, never
+adapted to). Only public test servers are recorded here. How to run a round: [operations.md](operations.md).
+
+## Peer behaviour matrix
+
+| Behaviour | candle | HAPI 8.13 | Firely 6.9 | Spark |
+|---|---|---|---|---|
+| history / vread | ✗ | ✓ | ✓ | ✓ |
+| stale `If-Match` → 409/412 | 500 | ✓ | ✓ | ✓ |
+| rejects unknown elements | ✗ | ✗ | ✓ | ✓ |
+| `next` paging link | ✗ | ✓ | ✓ | ✓ |
+| `entry.search.mode` present | ✓ | ✓ | ✓ | ✗ |
+| references returned | relative | relative | **absolute** | relative |
+| `urn:uuid` resolved in arrays in transactions | ✗ (`Task.basedOn`) | ✓ | ✓ | ✓ |
+| de-duplicates identical creates | – | ✓ (412) | – | – |
+| classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – |
+| `$process-message` | ✗ | ✗ | ✗ | ✗ |
+
+✓ = spec-expected behaviour, ✗ = deviation or missing, – = not observed.
 
 ## Round 0: fhir-candle (HL7, local, 2026-09-23)
 Peer behaviour: no history/vread; 500 (not 409/412) on stale If-Match; transaction leaves `urn:uuid`
@@ -38,3 +55,15 @@ SEKMET fixes:
 - **New server behaviour:** `server_behaviour.absolute_references: true` makes SEKMET's own server answer with
   absolute references (storage stays relative). A HIS client can then be tested against this allowed variation,
   and the whole library passes on loopback with it on.
+
+## Round 3: Spark public (spark.incendi.no/fhir)
+Result: 5/12 on first run, 12/12 after the fix (1 warning).
+Peer behaviour: searchset entries have **no `search.mode`**. That's allowed in R4 (0..1).
+SEKMET fixes:
+- **Bug (scenarios):** every search assertion used `entry.where(search.mode = 'match')`, which isn't guaranteed.
+  All library assertions now count `entry.resource.ofType(X)`. A separate `level: should` check reports a missing
+  `search.mode`.
+- **Bug (runner):** a `wait_for` `fhirpath` written beside `search:` was silently ignored, so
+  `lab_order_peer_fills` accepted a preliminary report. Both placements now apply. Regression test added.
+- **Docs:** added [operations.md](operations.md) and [scenarios.md](scenarios.md), with portability rules distilled
+  from rounds 0 to 3.

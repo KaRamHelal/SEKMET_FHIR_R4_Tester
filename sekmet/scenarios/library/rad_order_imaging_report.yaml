@@ -28,4 +28,4 @@ steps:
         - "DiagnosticReport.presentedForm.data.exists()"
   - name: ImagingStudy searchable by basedon
     request: {method: GET, path: ImagingStudy, params: {basedon: "ServiceRequest/${order.service_request.id}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(ImagingStudy).count() = 1"]}

@@ -52,7 +52,7 @@ steps:
     request: {method: GET, path: Patient, params: {identifier: "${ids.mrn}|${mrn}"}}
     expect:
       status: 200
-      fhirpath: ["Bundle.type = 'searchset'", "Bundle.entry.where(search.mode = 'match').count() = 1"]
+      fhirpath: ["Bundle.type = 'searchset'", "Bundle.entry.resource.ofType(Patient).count() = 1"]
 
   - name: Update with correct If-Match
     request:
@@ -126,7 +126,20 @@ steps:
     expect:
       status: 200
       fhirpath:
-        - "Bundle.entry.where(search.mode = 'match').count() = 1"
+        - "Bundle.entry.resource.ofType(Observation).count() = 1"
+        - "Bundle.entry.resource.ofType(Patient).exists()"
+
+  - name: Searchset entries carry search.mode (match / include)
+    level: should   # optional in R4 (0..1), but clients rely on it to tell matches from includes
+    requires: {interaction: transaction}
+    request:
+      method: GET
+      path: Observation
+      params: {"subject:Patient.family": "TxPatient${uid}", "_include": "Observation:subject"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Bundle.entry.all(search.mode.exists())"
         - "Bundle.entry.where(search.mode = 'include').resource.ofType(Patient).exists()"
 
   - name: Paging returns next link

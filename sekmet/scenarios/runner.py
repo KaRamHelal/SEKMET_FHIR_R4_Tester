@@ -363,8 +363,9 @@ class ScenarioRunner:
                                  else (s["type"], list((s.get("params") or {}).items())))
                 target = make_target(self.ctx, self.target_spec(s.get("target"), "peer"))
                 found = target.search(rtype, params)
-                if s.get("fhirpath"):
-                    found = [r for r in found if fhirpath_check(r, s["fhirpath"])[0]]
+                expr = s.get("fhirpath") or spec.get("fhirpath")  # accepted inside search: or beside it
+                if expr:
+                    found = [r for r in found if fhirpath_check(r, expr)[0]]
                 last = found
                 if len(found) >= minimum:
                     sr.message = f"{len(found)} {rtype} found"

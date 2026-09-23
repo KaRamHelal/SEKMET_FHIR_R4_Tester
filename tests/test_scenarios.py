@@ -33,3 +33,13 @@ def test_simulator_fills_inbound_order(live):
                                  "params": {"basedon": "ServiceRequest/${o.service_request.id}"}}, "timeout": 5}}]}
     r = ScenarioRunner(live, "self").run(spec)
     assert r.status == "passed", [s.message for s in r.steps]
+
+
+def test_wait_for_fhirpath_is_applied(live):
+    """A wait_for fhirpath that never matches must time out (it used to be ignored)."""
+    spec = {"name": "wait", "steps": [
+        {"action": "adt.register_patient", "save": "reg"},
+        {"wait_for": {"search": {"type": "Patient", "params": {"_id": "${reg.patient.id}"}},
+                      "fhirpath": "Patient.gender = 'no-such-gender'", "timeout": 1}}]}
+    r = ScenarioRunner(live, "self").run(spec)
+    assert r.steps[1].status == "failed" and "Timed out" in r.steps[1].message
