@@ -27,6 +27,7 @@ Settings are read from `$SEKMET_CONFIG`, else `./settings.yaml`. Env overrides: 
 | `sekmet seed --count N -t <target>` | master data + N patients (every other one admitted) |
 | `sekmet subscriptions register <peer>` | creates the `peers.<peer>.subscribe` Subscriptions on the peer |
 | `sekmet load run <scenario> -p <peer> -u 10 -d 60 [--ramp s] [--max-p95 ms] [--max-error-rate %] [--max-iteration-failure %]` | load test: scenario as user journey, per-endpoint percentiles, correctness under concurrency; exit 1 on a failed gate |
+| `sekmet bulk export -p <peer> --level group --group <id> [--type A,B] [--since t] [--poll-max s]` | runs an async `$export` on the peer, downloads and validates every NDJSON file |
 | `sekmet testscript run <files\|dirs> -p <peer> [-p <peer2>] [-f fixtures/] [--var k=v]` | executes FHIR TestScripts (JSON or XML); writes reports plus one `TestReport-*.json` per script |
 | `sekmet testscript export <run id> [--out f.json]` | turns a recorded run into a replayable TestScript (requests, fixtures, id variables, response-code asserts) |
 | `sekmet scenario run … --var name=value` | overrides a scenario variable (e.g. another peer's topic canonical) |
@@ -108,6 +109,20 @@ peer name). It reacts only to writes from outside SEKMET.
   directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
+
+## Bulk Data ($export)
+
+- **Server:** `[base]/$export`, `Patient/$export`, `Group/{id}/$export` (GET, or POST with Parameters). These need
+  `Prefer: respond-async` (400 otherwise). Supported: `_type`, `_since`, `_typeFilter`, `_outputFormat`
+  (NDJSON). Kick-off answers `202` + `Content-Location: {base}/bulk-status/{job}`. Status gives `202` +
+  `X-Progress` / `Retry-After` while running, then `200` + manifest (`transactionTime`, `request`,
+  `requiresAccessToken`, `output`, `error`); `DELETE` cancels. Files are served at `{base}/bulk-files/{job}/{Type}.ndjson`.
+  Patient level covers each patient's compartment; Group level covers the members' compartments.
+- **Client:** the `bulk_export` scenario step and `sekmet bulk export` follow the protocol, **honour `Retry-After`**
+  (unless `poll_max` caps it and records the deviation), and skip credentials on file URLs when
+  `requiresAccessToken` is false (pre-signed storage URLs reject them). Every line is checked: it parses, matches
+  the file's type and the requested `_type`, validates structurally (first 50) and adds up to the manifest count.
+- Use **Group level** on shared servers; system and patient level can export an entire server.
 
 ## Load and concurrency testing
 

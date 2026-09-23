@@ -29,6 +29,9 @@ class AppContext:
         self.subscriptions.seed_topics()
         from .subscriptions.engine import status_op
         self.service.register_operation("Subscription", "$status", status_op)
+        from .bulk.server import BulkExports, register as register_bulk
+        self.bulk = BulkExports(self)
+        register_bulk(self.service, self.bulk)
         self.simulator = Simulator(self)
         self.store.on_write(self.subscriptions.on_write)
         self.store.on_write(self.simulator.on_write)

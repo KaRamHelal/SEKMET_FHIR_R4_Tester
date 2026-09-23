@@ -1,0 +1,44 @@
+name: Bulk Data - Group-level $export
+description: >
+  Builds a small Group of synthetic patients with clinical data on the peer, runs an async Group/$export
+  (kick-off 202 + Content-Location, status polling honouring Retry-After, manifest), downloads every NDJSON file
+  and checks lines parse, match their declared type and the requested _type, and agree with manifest counts.
+  Group level keeps the export small on shared servers.
+tags: [bulk]
+requires: {operation: export}
+steps:
+  - {name: Patient A, action: adt.register_patient, save: a}
+  - {name: Patient B, action: adt.register_patient, save: b}
+  - {name: Vitals for A, action: clinical.vitals, args: {patient: "${a.patient.id}"}}
+  - {name: Diagnosis for B, action: clinical.condition, args: {patient: "${b.patient.id}", code: "44054006"}}
+  - name: Create the Group
+    request:
+      method: POST
+      path: Group
+      body:
+        resourceType: Group
+        type: person
+        actual: true
+        name: "SEKMET bulk test ${uid}"
+        member: [{entity: {reference: "Patient/${a.patient.id}"}}, {entity: {reference: "Patient/${b.patient.id}"}}]
+    expect: {status: 201}
+    save: group
+  - name: Kick-off without Prefer respond-async is rejected
+    level: should
+    request: {method: GET, path: "Group/${group.body.id}/$export"}
+    expect: {status: [400, 406, 422]}
+  - name: Group/$export for Patient, Observation, Condition
+    # poll_max: 10 caps Retry-After waits (HAPI asks 120 s for a job that completes in ~20 s); remove it to
+    # follow the server's Retry-After exactly as the spec recommends
+    bulk_export: {level: group, group: "${group.body.id}", types: "Patient,Observation,Condition", timeout: 300,
+                  poll_max: 10}
+    save: export
+    expect:
+      fhirpath:
+        - "kickoff_status = 202"
+        - "all_valid = true"
+        - "files.where(type = 'Patient').lines = 2"
+        - "files.where(type = 'Observation').lines >= 6"
+        - "files.where(type = 'Condition').lines >= 1"
+        - "files.all(type = 'Patient' or type = 'Observation' or type = 'Condition')"
+        - "manifest.transactionTime.exists()"

@@ -196,7 +196,7 @@ class ScenarioRunner:
             failed = False
             for i, step in enumerate(spec.get("steps", [])):
                 kind = next((k for k in ("action", "request", "assert", "wait_for", "subscribe", "set", "sleep",
-                                         "validate") if k in step), "unknown")
+                                         "validate", "bulk_export") if k in step), "unknown")
                 sr = StepResult(i + 1, step.get("name") or f"{kind} {step.get(kind) if isinstance(step.get(kind), str) else ''}".strip(), kind)
                 step_skip = self._check_requires(step.get("requires") or {})
                 if skip_reason or step_skip or (failed and not step.get("always", False)):
@@ -273,6 +273,20 @@ class ScenarioRunner:
             out = self._wait(interpolate(step["wait_for"], v), state, sr)
         elif kind == "subscribe":
             out = self._subscribe(interpolate(step["subscribe"], v), state, sr)
+        elif kind == "bulk_export":
+            from ..bulk.client import bulk_export
+            spec = interpolate(step["bulk_export"], v)
+            types = spec.get("types")
+            out = bulk_export(self.ctx.peer_client(self.peer), spec.get("level", "system"), spec.get("group"),
+                              types.split(",") if isinstance(types, str) else types, spec.get("since"),
+                              spec.get("type_filter"), float(spec.get("timeout", 300)),
+                              float(spec["poll_max"]) if spec.get("poll_max") else None)
+            sr.message = (f"kick-off {out['kickoff_status']}, {out['polls']} poll(s), "
+                          f"{out['total_resources']} resources in {len(out['files'])} file(s)")
+            for err in out["errors"]:
+                sr.checks.append({"check": "bulk export protocol", "ok": False, "detail": err})
+            self._expect(step.get("expect"), out, None, v, sr)
+            self._raise_if_failed(sr)
         elif kind == "set":
             vals = interpolate(step["set"], v)
             v.update(vals)

@@ -19,6 +19,7 @@ adapted to). Only public test servers are recorded here. How to run a round: [op
 | classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – | – |
 | topic-based (Backport) Subscriptions | ✓ (handshake, id-only, `$status`) | – | – | – | – |
 | FHIR XML both ways | – | ✓ | ✓ | ✓ | – |
+| Bulk `$export` (Group) | – | ✓ (Retry-After 120 s) | ✓ | – | – |
 | `$process-message` | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ✓ = spec-expected behaviour, ✗ = deviation or missing, – = not observed.
@@ -157,3 +158,13 @@ found **two SEKMET server bugs**:
 **fhir-candle under the same load** (`adt_merge_update`, 8 users): 354 req/s, p95 37 ms, 0 errors, 0 failed
 journeys. So SEKMET's load client isn't the bottleneck; SEKMET's own server (Python + SQLite + a single write
 lock) tops out around 145 req/s on this machine.
+
+## Round 10: Bulk Data $export, SEKMET, HAPI and Firely
+Built async `$export` in SEKMET (server) and a protocol-following client (`bulk_export` step, `sekmet bulk
+export`). `bulk_export_group` passes on loopback, **HAPI** (async job about 22 s; `X-Progress` QUEUED → IN_PROGRESS)
+and **Firely** (about 32 s). Only small Group-level exports were used on the public servers.
+SEKMET fix found while testing:
+- **Client politeness:** HAPI answered `Retry-After: 120`, but the first client capped polling at 10 s, polling
+  12× more often than asked. The spec says clients SHOULD honour it, so the client now does by default and
+  records what was requested. The library scenario opts into `poll_max: 10` explicitly, with a comment, for
+  speed.

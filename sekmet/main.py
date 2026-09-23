@@ -27,9 +27,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from .fhir.router import build_router as fhir_router
     from .subscriptions.engine import build_hook_router
     from .ui.routes import build_router as ui_router, mount_static
+    from .bulk.server import build_router as bulk_router
 
     app.include_router(auth_router(get_ctx))
     app.include_router(build_hook_router(get_ctx))
+    app.include_router(bulk_router(get_ctx))  # before the /fhir catch-all
     app.include_router(fhir_router(get_ctx))
     app.include_router(ui_router(get_ctx))
     mount_static(app)

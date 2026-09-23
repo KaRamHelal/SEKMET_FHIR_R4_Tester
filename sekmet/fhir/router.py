@@ -128,7 +128,7 @@ def dispatch(ctx, request: Request, segs: list[str], params: list[tuple[str, str
     strict = "handling=strict" in (prefer or "")
     # loopback scenario traffic can ask the simulator not to react (it drives both sides itself)
     origin = "loopback" if h.get("x-sekmet-simulate", "").lower() == "off" else "external"
-    opctx = {"origin": origin}
+    opctx = {"origin": origin, "prefer": prefer or "", "request_url": str(request.url)}
     n = len(segs)
 
     if n == 0:

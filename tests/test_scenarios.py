@@ -123,3 +123,25 @@ def test_load_runner_small(live):
     s = LoadRunner(live, LoadConfig("adt_merge_update", "self", users=4, duration_s=30, iterations=12)).run()
     assert s["iterations"] == 12 and s["iteration_failure_rate_pct"] == 0, s["failures"]
     assert s["server_error_rate_pct"] == 0 and s["requests"] > 0 and s["endpoints"][0]["p95"] > 0
+
+
+def test_bulk_export_async_flow(live):
+    import httpx
+    from sekmet.bulk.client import bulk_export
+    base = live.settings.base_url
+    pid = httpx.post(f"{base}/Patient", json={"resourceType": "Patient", "name": [{"family": "Bulk"}]}).json()["id"]
+    httpx.post(f"{base}/Observation", json={"resourceType": "Observation", "status": "final", "code": {"text": "x"},
+                                            "subject": {"reference": f"Patient/{pid}"}})
+    gid = httpx.post(f"{base}/Group", json={"resourceType": "Group", "type": "person", "actual": True,
+                                            "member": [{"entity": {"reference": f"Patient/{pid}"}}]}).json()["id"]
+    assert httpx.get(f"{base}/Group/{gid}/$export").status_code == 400  # Prefer: respond-async required
+    out = bulk_export(live.peer_client("self"), "group", gid, ["Patient", "Observation"], timeout=30)
+    assert out["kickoff_status"] == 202 and out["all_valid"], out
+    assert {f["type"]: f["lines"] for f in out["files"]} == {"Patient": 1, "Observation": 1}
+    assert out["retry_after_requested"] and out["poll_cap_s"] is None  # followed the server's Retry-After
+    # cancel: DELETE on the status URL removes the job
+    r = httpx.get(f"{base}/$export", headers={"Prefer": "respond-async"}, params={"_type": "Patient"})
+    status = r.headers["content-location"]
+    assert httpx.delete(status).status_code == 202 and httpx.get(status).status_code == 404
+    assert httpx.get(f"{base}/$export", headers={"Prefer": "respond-async"},
+                     params={"_outputFormat": "text/csv"}).status_code == 400

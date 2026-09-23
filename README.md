@@ -9,6 +9,7 @@ every exchange so you can see exactly where a real HIS deviates from the spec or
 - **Simulator**: when the HIS sends an order, appointment, prescription or claim, SEKMET plays the lab/RIS filler,
   scheduler, pharmacy or payer and produces the downstream resources.
 - **Scenario runner**: YAML scenarios with FHIRPath assertions, reported as JSON, JUnit XML (for CI) and HTML.
+- **Bulk Data**: serves async `$export` (system, Patient, Group) and tests a peer's `$export` end to end.
 - **Load testing**: any scenario as a user journey for N parallel users, with per-endpoint latency percentiles,
   error rates, correctness under concurrency and CI gates.
 - **FHIR TestScript**: runs standard TestScripts (JSON/XML) with TestReport output, and exports any run as a

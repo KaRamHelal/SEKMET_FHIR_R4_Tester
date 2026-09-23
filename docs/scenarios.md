@@ -19,6 +19,7 @@ and skip on their own.
 | `billing_claim` | Coverage, Account, ChargeItem, Claim; then the payer's ClaimResponse and `Claim/$submit` | payer steps need role `payer` | – |
 | `subscription_roundtrip` | R4 rest-hook Subscription on the peer, matching changes notified to SEKMET `/hooks` | `Subscription` create, `public_url` | candle supports backport (topic) Subscriptions only |
 | `subscription_backport_roundtrip` | R4 **Subscriptions Backport** (topic-based): handshake, filtered `id-only` event for `encounter-complete` (admit must not fire), focus fetched from the peer, `$status` | `Subscription` create, `public_url` for remote peers. Other peers' topics: `--var topic=… --var filter_param=…` | candle: passes (its topic filters on `subject`) |
+| `bulk_export_group` | Async Group-level `$export` of 2 patients' Patient/Observation/Condition: 202 + polling, manifest, NDJSON validity, `_type` respected, counts; kick-off without `Prefer` rejected (SHOULD) | peer advertises `export` | HAPI and Firely pass (HAPI asks `Retry-After: 120` for a ~20 s job) |
 | `messaging_adt_orders` | A04/A01/O21/R01/A03 message Bundles to `$process-message`, `response.code = ok`; malformed message rejected | peer advertises messaging | – |
 
 Per-server results and what they changed in SEKMET are in [testing-log.md](testing-log.md).
@@ -57,6 +58,8 @@ steps:
                 filters: ["Encounter?patient=Patient/${reg.patient.id}"], content: id-only, heartbeat: 60}
   - wait_for: {notification: {kind: handshake}, timeout: 20}   # kind: handshake | heartbeat | event-notification
   - validate: {resource: "${reg.patient}", conformance: false}
+  - bulk_export: {level: group, group: "${g.body.id}", types: "Patient,Observation", timeout: 300}
+    expect: {fhirpath: ["all_valid = true", "files.where(type = 'Patient').lines = 2"]}
   - set: {k: v}
   - sleep: 1
 ```

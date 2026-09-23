@@ -22,9 +22,10 @@ validator_app = typer.Typer(help="HL7 FHIR validator integration", no_args_is_he
 subs_app = typer.Typer(help="Subscriptions on peers", no_args_is_help=True)
 ts_app = typer.Typer(help="Run FHIR TestScripts, export runs as TestScripts", no_args_is_help=True)
 load_app = typer.Typer(help="Load / concurrency testing with scenarios as user journeys", no_args_is_help=True)
+bulk_app = typer.Typer(help="FHIR Bulk Data ($export) against a peer", no_args_is_help=True)
 for sub, name in ((scenario_app, "scenario"), (peers_app, "peers"), (wf_app, "workflow"), (keys_app, "keys"),
                   (validator_app, "validator"), (subs_app, "subscriptions"), (ts_app, "testscript"),
-                  (load_app, "load")):
+                  (load_app, "load"), (bulk_app, "bulk")):
     app.add_typer(sub, name=name)
 
 ConfigOpt = typer.Option(None, "--config", "-c", help="settings.yaml path (default: $SEKMET_CONFIG or ./settings.yaml)")
@@ -272,6 +273,33 @@ def load_run(scenario: str = typer.Argument(..., help="scenario id/path used as 
     if server:
         server.should_exit = True
     raise typer.Exit(1 if gates else 0)
+
+
+@bulk_app.command("export")
+def bulk_export_cmd(peer: str = typer.Option("self", "--peer", "-p"),
+                    level: str = typer.Option("group", help="system | patient | group"),
+                    group: Optional[str] = typer.Option(None, help="Group id (level=group)"),
+                    type_: Optional[str] = typer.Option(None, "--type", help="comma-separated _type"),
+                    since: Optional[str] = None, timeout: float = 600,
+                    poll_max: Optional[float] = typer.Option(None, help="cap Retry-After waits (default: honour)"),
+                    config: Optional[str] = ConfigOpt):
+    """Kick off $export on a peer, follow it to completion, download and validate every NDJSON file."""
+    from .bulk.client import bulk_export
+    ctx = _ctx(config)
+    if level == "group" and not group:
+        typer.secho("--group is required for level=group (system/patient exports can be very large)", fg="red")
+        raise typer.Exit(2)
+    out = bulk_export(ctx.peer_client(peer), level, group, type_.split(",") if type_ else None, since,
+                      None, timeout, poll_max)
+    typer.echo(f"kick-off {out['kickoff_status']}, {out['polls']} poll(s), Retry-After requested "
+               f"{sorted({x for x in out['retry_after_requested'] if x})}, {out.get('duration_ms', 0) / 1000:.1f}s")
+    for f in out["files"]:
+        typer.echo(f"  {f['type']:<22} {f['lines']:>7} lines  declared={f['declared']}  invalid={f['invalid']}  "
+                   f"{'; '.join(f['issues'][:2])}")
+    for e in out["errors"]:
+        typer.secho(f"  ✗ {e}", fg="red")
+    typer.secho("VALID" if out["all_valid"] else "PROBLEMS FOUND", fg="green" if out["all_valid"] else "red")
+    raise typer.Exit(0 if out["all_valid"] else 1)
 
 
 @peers_app.command("list")
