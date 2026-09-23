@@ -72,3 +72,16 @@ SEKMET fixes:
 Result: 12/12 (1 warning), with no SEKMET changes needed. The fixes from rounds 1 to 3 held on a fifth
 implementation.
 Peer behaviour: accepts unknown elements (201); otherwise spec-expected on everything the library checks.
+
+## Round 5: Inferno SMART App Launch test kit (STU2.2, Backend Services group) vs SEKMET's server
+This time the direction is reversed: Inferno tests **SEKMET** as the authorization and FHIR server.
+It runs in one rootless Podman container (`scripts/inferno.sh`).
+First run: 7/9 (TLS failed; `authorization_endpoint` missing). Final: all Backend Services authorization tests
+pass, including TLS 1.2+. One discovery check fails by design.
+SEKMET fixes:
+- **SMART discovery:** added the required `authorization_endpoint`. `/auth/authorize` answers
+  `unsupported_response_type`, because only client_credentials is implemented. Dropped `issuer`: SMART 2.2 wants it
+  omitted without `sso-openid-connect`.
+- **HTTPS serving:** `tls_certfile` / `tls_keyfile`, and `sekmet keys tls-cert` for self-signed test certs.
+By design: `3.1.02` requires the `authorization_code` grant plus PKCE `S256`, i.e. user-facing SMART App Launch.
+SEKMET tests system-to-system integration and doesn't claim that capability.

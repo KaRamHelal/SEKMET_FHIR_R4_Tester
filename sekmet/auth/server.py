@@ -131,8 +131,10 @@ def build_router(get_ctx) -> APIRouter:
     def smart_config():
         s = get_ctx().settings
         return {
-            "issuer": s.root_url,
+            # no "issuer": SMART 2.2 says omit it unless the sso-openid-connect capability is offered
             "token_endpoint": f"{s.root_url}/auth/token",
+            # required by SMART STU2; SEKMET does not run user launches, the endpoint answers with an OAuth error
+            "authorization_endpoint": f"{s.root_url}/auth/authorize",
             "token_endpoint_auth_methods_supported": ["private_key_jwt", "client_secret_basic", "client_secret_post"],
             "token_endpoint_auth_signing_alg_values_supported": ALGS,
             "grant_types_supported": ["client_credentials"],
@@ -144,6 +146,14 @@ def build_router(get_ctx) -> APIRouter:
 
     router.add_api_route("/fhir/.well-known/smart-configuration", smart_config, methods=["GET"])
     router.add_api_route("/.well-known/smart-configuration", smart_config, methods=["GET"])
+
+    @router.api_route("/auth/authorize", methods=["GET", "POST"])
+    def authorize(request: Request):
+        """Only client_credentials is supported; per RFC 6749 4.1.2.1 we cannot redirect to an unregistered
+        redirect_uri, so the error is returned directly."""
+        return _oauth_error(400, "unsupported_response_type",
+                            "SEKMET supports SMART Backend Services (client_credentials) only; "
+                            "authorization_code / user launch is not implemented")
 
     @router.get("/.well-known/jwks.json")
     def jwks():

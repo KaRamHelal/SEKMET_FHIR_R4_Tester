@@ -102,6 +102,37 @@ peer name). It reacts only to writes from outside SEKMET.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
 
+## Serving over HTTPS
+
+```bash
+sekmet keys tls-cert localhost 127.0.0.1 --out keys/tls    # self-signed, testing only
+```
+Set `tls_certfile: keys/tls.crt`, `tls_keyfile: keys/tls.key` and an `https://` `base_url`, then `sekmet serve`.
+Clients must trust `keys/tls.crt`. Use a real certificate when a HIS has to call SEKMET across a network.
+
+## Conformance-testing SEKMET itself with Inferno
+
+This is the lightest setup: one rootless Podman container (Docker also works), with no compose stack, web UI or
+Redis. Ruby 3.3.6 runs inside the container, so the host's Ruby version doesn't matter.
+
+```bash
+scripts/inferno.sh setup                       # clones the SMART App Launch kit into .inferno/, installs gems once
+```
+
+Run SEKMET with `server_auth.types: [smart]` and a `smart_clients` entry whose `jwks` holds the **public**
+(`key_ops: verify`) keys from `.inferno/smart-app-launch-test-kit/lib/smart_app_launch/smart_jwks.json`.
+Serve it over HTTPS (see above), then:
+
+```bash
+SEKMET_CA=keys/tls.crt scripts/inferno.sh run execute --suite smart_stu2_2 --groups 3 --outputter plain \
+  --inputs "url:https://localhost:8090/fhir" \
+  'backend_services_smart_auth_info:{"auth_type":"backend_services","use_discovery":"true","client_id":"inferno","requested_scopes":"system/*.rs","encryption_algorithm":"ES384"}'
+```
+
+Expected result: everything passes except `3.1.02`. That test requires `authorization_code` and PKCE (a full
+user-facing SMART App Launch server), which SEKMET doesn't implement by design. `--outputter json` gives
+machine-readable results. See [testing-log.md](testing-log.md) for the latest run.
+
 ## Public repository rules
 
 The repo is public. `settings.yaml`, `keys/`, `*.secret`, `*.pem`, `.env*`, `data/` (captured traffic) and

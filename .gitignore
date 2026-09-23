@@ -21,3 +21,4 @@ tools/
 .env
 .env.*
 settings.*.local.yaml
+.inferno/

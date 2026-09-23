@@ -127,3 +127,42 @@ def test_client_credentials_secret(tmp_path, monkeypatch):
             PeerClient("bad", bad).search("Patient")
     finally:
         server.should_exit = True
+
+
+def test_smart_configuration_has_required_fields_and_authorize_errors(tmp_path):
+    from fastapi.testclient import TestClient
+    from sekmet.main import create_app
+    c = TestClient(create_app(make_settings(tmp_path, server_auth={"types": ["smart"]})))
+    conf = c.get("/fhir/.well-known/smart-configuration").json()
+    for field in ("token_endpoint", "authorization_endpoint", "capabilities", "grant_types_supported"):
+        assert field in conf, field
+    assert "issuer" not in conf  # only allowed with sso-openid-connect
+    r = c.get("/auth/authorize", params={"response_type": "code", "client_id": "x"})
+    assert r.status_code == 400 and r.json()["error"] == "unsupported_response_type"
+
+
+def test_serve_over_tls(tmp_path):
+    import ssl
+    import httpx
+    from typer.testing import CliRunner
+    from sekmet.cli import app as cli
+    out = str(tmp_path / "tls")
+    assert CliRunner().invoke(cli, ["keys", "tls-cert", "--out", out]).exit_code == 0
+    port = free_port()
+    s = make_settings(tmp_path, port, tls_certfile=f"{out}.crt", tls_keyfile=f"{out}.key")
+    s.base_url = f"https://127.0.0.1:{port}/fhir"
+    import uvicorn, threading, time as _t
+    from sekmet.main import create_app
+    server = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level="warning",
+                                           ssl_certfile=f"{out}.crt", ssl_keyfile=f"{out}.key"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(100):
+        if server.started:
+            break
+        _t.sleep(0.05)
+    try:
+        ctx = ssl.create_default_context(cafile=f"{out}.crt")
+        r = httpx.get(f"https://127.0.0.1:{port}/fhir/metadata", verify=ctx)
+        assert r.status_code == 200
+    finally:
+        server.should_exit = True

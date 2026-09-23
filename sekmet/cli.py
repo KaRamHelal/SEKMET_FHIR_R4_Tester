@@ -46,7 +46,10 @@ def _embedded_server(config: str | None):
 
     settings = load_settings(config)
     fastapi_app = create_app(settings)
-    server = uvicorn.Server(uvicorn.Config(fastapi_app, host=settings.host, port=settings.port, log_level="warning"))
+    tls = ({"ssl_certfile": settings.tls_certfile, "ssl_keyfile": settings.tls_keyfile}
+           if settings.tls_certfile and settings.tls_keyfile else {})
+    server = uvicorn.Server(uvicorn.Config(fastapi_app, host=settings.host, port=settings.port, log_level="warning",
+                                           **tls))
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(100):
         if server.started:
@@ -70,8 +73,11 @@ def serve(config: Optional[str] = ConfigOpt, host: Optional[str] = None, port: O
         os.environ["SEKMET_CONFIG"] = config
     s = load_settings(config)
     typer.secho(f"SEKMET FHIR base: {s.base_url}   console: {s.root_url}/ui", fg="green")
+    tls = {"ssl_certfile": s.tls_certfile, "ssl_keyfile": s.tls_keyfile} if s.tls_certfile and s.tls_keyfile else {}
+    if tls and not s.base_url.startswith("https://"):
+        typer.secho("TLS is configured but base_url is not https://; links and discovery will be wrong", fg="yellow")
     uvicorn.run("sekmet.main:app_factory", factory=True, host=host or s.host, port=port or s.port, reload=reload,
-                log_level="info")
+                log_level="info", **tls)
 
 
 @scenario_app.command("list")
@@ -204,6 +210,42 @@ def keys_generate(out: str = "keys/sekmet_private.pem", alg: str = "RS384", forc
     Path(out).with_suffix(".jwks.json").write_text(json.dumps(jwks, indent=2))
     typer.echo(f"Private key: {out}\nPublic JWKS: {Path(out).with_suffix('.jwks.json')}\n")
     typer.echo(json.dumps(jwks, indent=2))
+
+
+@keys_app.command("tls-cert")
+def keys_tls_cert(hostnames: list[str] = typer.Argument(None, help="DNS names / IPs (default: localhost 127.0.0.1)"),
+                  out: str = "keys/tls", days: int = 365):
+    """Self-signed TLS certificate for serving SEKMET over https (testing only)."""
+    import datetime
+    import ipaddress
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    names = hostnames or ["localhost", "127.0.0.1"]
+    key = ec.generate_private_key(ec.SECP256R1())
+    sans = []
+    for n in names:
+        try:
+            sans.append(x509.IPAddress(ipaddress.ip_address(n)))
+        except ValueError:
+            sans.append(x509.DNSName(n))
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, names[0])])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=5))
+            .not_valid_after(now + datetime.timedelta(days=days))
+            .add_extension(x509.SubjectAlternativeName(sans), critical=False)
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(key, hashes.SHA256()))
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    Path(f"{out}.crt").write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    Path(f"{out}.key").write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                     serialization.NoEncryption()))
+    Path(f"{out}.key").chmod(0o600)
+    typer.echo(f"Wrote {out}.crt and {out}.key for {', '.join(names)}.\n"
+               f"Set tls_certfile/tls_keyfile and an https:// base_url in settings.yaml; clients must trust {out}.crt.")
 
 
 @app.command()

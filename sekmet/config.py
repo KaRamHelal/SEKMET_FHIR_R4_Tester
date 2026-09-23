@@ -122,6 +122,8 @@ class Settings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8090
     public_url: str | None = None  # externally reachable root (used for hook endpoints); default derived
+    tls_certfile: str | None = None  # serve HTTPS when both are set (`sekmet keys tls-cert` makes a self-signed pair)
+    tls_keyfile: str | None = None
     data_dir: str = "data"
     db_path: str | None = None
     facility_name: str = "SEKMET General Hospital"
