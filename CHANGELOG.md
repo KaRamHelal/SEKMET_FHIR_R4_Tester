@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- `sekmet --version` / `-V`, and `sekmet.__version__` read from the package metadata.
+- Releases now publish from GitHub Actions via PyPI Trusted Publishing (no API tokens).
+
 ## 0.1.0 (first public release)
 
 - **FHIR R4 server:** CRUD, versioning, conditional operations, transactions/batch, search (chaining, `_has`,

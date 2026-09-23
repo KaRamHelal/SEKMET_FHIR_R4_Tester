@@ -31,6 +31,19 @@ for sub, name in ((scenario_app, "scenario"), (peers_app, "peers"), (wf_app, "wo
 ConfigOpt = typer.Option(None, "--config", "-c", help="settings.yaml path (default: $SEKMET_CONFIG or ./settings.yaml)")
 
 
+def _version_cb(value: bool):
+    if value:
+        from . import __version__
+        typer.echo(f"sekmet-fhir {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(version: bool = typer.Option(False, "--version", "-V", callback=_version_cb, is_eager=True,
+                                       help="Show the version and exit")):
+    """SEKMET FHIR R4 Tester - micro HIS for testing real HIS FHIR interfaces."""
+
+
 def _ctx(config: str | None):
     from .context import AppContext
     return AppContext(load_settings(config))

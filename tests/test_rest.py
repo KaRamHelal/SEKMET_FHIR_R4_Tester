@@ -231,3 +231,11 @@ def test_xml_create_read_search_and_errors(client):
     r = client.post("/fhir/Patient", content=xxe, headers={"Content-Type": "application/fhir+xml"})
     assert b"root:" not in r.content
     assert "xml" in client.get("/fhir/metadata").json()["format"]
+
+
+def test_cli_version():
+    from typer.testing import CliRunner
+    from sekmet import __version__
+    from sekmet.cli import app
+    r = CliRunner().invoke(app, ["--version"])
+    assert r.exit_code == 0 and r.output.strip() == f"sekmet-fhir {__version__}"
