@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Bulk Data{% endblock %}
+{% block main %}
+<h1>Bulk Data ($export)</h1>
+{% if running %}<div class="panel warn">Running: {{ running|join(', ') }} — <a href="/ui/bulk">refresh</a></div>{% endif %}
+<div class="split" style="margin-top:16px">
+  <form class="panel" method="post" action="/ui/bulk/run">
+    <h2>Test a peer's $export</h2>
+    <div class="row">
+      <div><label>Peer</label><select name="peer">{% for p in peers %}<option>{{ p }}</option>{% endfor %}</select></div>
+      <div><label>Level</label><select name="level"><option>group</option><option>patient</option><option>system</option></select></div>
+      <div><label>Group id</label><input name="group"></div>
+    </div>
+    <div class="row">
+      <div><label>_type (comma-separated)</label><input name="types" value="Patient,Observation"></div>
+      <div><label>Cap Retry-After at (s, blank = honour)</label><input name="poll_max"></div>
+    </div>
+    <p class="mute">Prefer Group level on shared servers — system/patient level can export a whole server.</p>
+    <p><button>Run export</button></p>
+  </form>
+  <div class="panel">
+    <h2>Exports served by SEKMET</h2>
+    <div class="scroll"><table>{% for j in jobs %}<tr><td class="mono">{{ j.id }}</td><td>{{ j.level }}</td><td>{{ j.status }}</td>
+      <td>{% for o in j.output %}{{ o.type }} ({{ o.count }}) {% endfor %}</td></tr>
+    {% else %}<tr><td class="mute">None. Peers kick off at <code>{{ settings.base_url }}/$export</code> with <code>Prefer: respond-async</code>.</td></tr>{% endfor %}</table></div>
+  </div>
+</div>
+<div class="panel" style="margin-top:16px">
+  <h2>Client results (this session)</h2>
+  <div class="scroll"><table><tr><th>When</th><th>Peer</th><th>Level</th><th>Kick-off</th><th>Polls</th><th>Files</th><th>Result</th></tr>
+  {% for r in results %}<tr><td class="mono">{{ r.ts }}</td><td>{{ r.peer }}</td><td>{{ r.level }} {{ r.group }}</td>
+    <td>{{ r.kickoff_status }}</td><td>{{ r.polls }}{% if r.retry_after_requested %} <span class="mute">(Retry-After {{ r.retry_after_requested|unique|join(', ') }})</span>{% endif %}</td>
+    <td>{% for f in r.files %}<div>{{ f.type }}: {{ f.lines }}{% if f.issues %} <span class="bad">{{ f.issues[:2]|join('; ') }}</span>{% endif %}</div>{% endfor %}</td>
+    <td>{% if r.all_valid %}<span class="pill ok">valid</span>{% else %}<span class="pill bad">problems</span>{% for e in r.errors %}<div class="bad">{{ e }}</div>{% endfor %}{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="mute">No exports run yet.</td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

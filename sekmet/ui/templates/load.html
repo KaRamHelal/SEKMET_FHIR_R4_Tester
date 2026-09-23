@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Load{% endblock %}
+{% block main %}
+<h1>Load &amp; concurrency</h1>
+{% if running %}<div class="panel warn">Running: {{ running|join(', ') }} — <a href="/ui/load">refresh</a></div>{% endif %}
+<div class="split" style="margin-top:16px">
+  <form class="panel" method="post" action="/ui/load/run">
+    <h2>Start a load run</h2>
+    <p class="mute">Each virtual user repeats the scenario; its assertions still apply, so failures under concurrency are reported next to latency.</p>
+    <label>Scenario (user journey)</label>
+    <select name="scenario">{% for s in scenarios %}<option value="{{ s.id }}" {% if s.id == 'adt_admit_transfer_discharge' %}selected{% endif %}>{{ s.id }}</option>{% endfor %}</select>
+    <div class="row">
+      <div><label>Peer</label><select name="peer">{% for p in peers %}<option>{{ p }}</option>{% endfor %}</select></div>
+      <div><label>Users</label><input name="users" type="number" value="5" min="1" max="200"></div>
+      <div><label>Duration (s)</label><input name="duration" type="number" value="30" min="1" max="3600"></div>
+      <div><label>Ramp (s)</label><input name="ramp" type="number" value="0" min="0"></div>
+    </div>
+    <label><input type="checkbox" name="own" value="true"> I own this system / I am authorised to load it (required for non-local peers)</label>
+    <p><button>Start</button></p>
+  </form>
+  <div class="panel">
+    <h2>Results (this session)</h2>
+    <div class="scroll"><table><tr><th>Journey</th><th>Peer</th><th>req/s</th><th>p95</th><th>5xx</th><th>failed journeys</th><th></th></tr>
+    {% for r in results %}<tr><td>{{ r.config.scenario }}<div class="mute">{{ r.config.users }} users · {{ r.elapsed_s }}s</div></td>
+      <td>{{ r.config.peer }}</td><td>{{ r.throughput_rps }}</td><td style="white-space:nowrap">{{ r.latency.p95 }} ms</td>
+      <td class="{{ 'bad' if r.server_error_rate_pct else '' }}">{{ r.server_error_rate_pct }}%</td>
+      <td class="{{ 'bad' if r.iteration_failure_rate_pct else 'ok' }}">{{ r.iteration_failure_rate_pct }}%</td>
+      <td><a href="/ui/load/{{ loop.index0 }}">report</a></td></tr>
+    {% else %}<tr><td colspan="7" class="mute">No load runs yet.</td></tr>{% endfor %}</table></div>
+  </div>
+</div>
+{% endblock %}

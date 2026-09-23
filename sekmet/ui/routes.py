@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -26,6 +27,8 @@ templates.env.filters["pretty"] = lambda v: _pretty(v)
 templates.env.filters["display"] = lambda r: display_of(r) or ""
 
 _running: dict[str, threading.Thread] = {}
+_load_results: list[dict] = []
+_bulk_results: list[dict] = []
 
 # workflows offered on a resource detail page, by resource type -> [(workflow key, param name)]
 CONTEXT_ACTIONS = {
@@ -243,7 +246,8 @@ def build_router(get_ctx) -> APIRouter:
         subs = ctx.service.search("Subscription", [("_count", "100")]).body.get("entry", [])
         return page(request, "subscriptions.html", subs=[e["resource"] for e in subs if "resource" in e
                                                          and e["resource"]["resourceType"] == "Subscription"],
-                    notes=notifications(ctx.store, limit=100), peers=list(ctx.settings.peers))
+                    notes=notifications(ctx.store, limit=100), peers=list(ctx.settings.peers),
+                    topics=sorted(ctx.subscriptions.topics().values(), key=lambda t: t.url))
 
     @router.post("/subscriptions/register", response_class=HTMLResponse)
     def subscriptions_register(request: Request, peer: str = Form(...)):
@@ -268,6 +272,119 @@ def build_router(get_ctx) -> APIRouter:
             oo = {"resourceType": "OperationOutcome", "issue": [{"severity": "error", "code": "structure",
                                                                 "diagnostics": f"Invalid JSON: {e}"}]}
         return page(request, "validate.html", body=body, oo=oo, ok=not has_errors(oo.get("issue", [])))
+
+    # ---------------- TestScripts ----------------
+
+    @router.get("/testscripts", response_class=HTMLResponse)
+    def testscripts(request: Request):
+        ctx = get_ctx()
+        runs = [r for r in list_runs(ctx.store, 200) if r["id"].startswith("ts-")][:30]
+        return page(request, "testscripts.html", runs=runs, peers=ctx.settings.peer_names(),
+                    running=[k for k, t in _running.items() if t.is_alive() and k.startswith("ts:")])
+
+    @router.post("/testscripts/run")
+    async def testscripts_run(request: Request):
+        from ..fhir.xml import from_xml
+        from ..scenarios.testscript import TestScriptRunner
+        ctx = get_ctx()
+        form = await request.form()
+        upload = form.get("file")
+        raw = (await upload.read()) if upload is not None and getattr(upload, "filename", "") else \
+            (form.get("script") or "").encode()
+        try:
+            ts = from_xml(raw) if raw.lstrip().startswith(b"<") else json.loads(raw or b"{}")
+            if ts.get("resourceType") != "TestScript":
+                raise ValueError(f"not a TestScript (got {ts.get('resourceType')})")
+        except (ValueError, FhirError) as e:
+            return page(request, "message.html", title="TestScript not accepted", message=str(e))
+        peers = [p.strip() for p in (form.get("peers") or "self").split(",") if p.strip()]
+        fixtures = [d.strip() for d in (form.get("fixtures") or "").split(",") if d.strip()]
+        variables = dict(line.split("=", 1) for line in (form.get("vars") or "").splitlines() if "=" in line)
+        runner = TestScriptRunner(ctx, peers, fixtures, form.get("fixture_base") or None, variables)
+        label = f"ts:{ts.get('name') or ts.get('id')}@{','.join(peers)}"
+        t = threading.Thread(target=runner.run, args=(ts,), daemon=True, name=label)
+        _running[label] = t
+        t.start()
+        return RedirectResponse("/ui/testscripts", status_code=303)
+
+    @router.get("/testreport/{run_id}")
+    def testreport(run_id: str):
+        from fastapi.responses import JSONResponse
+        from ..scenarios.testscript import build_test_report
+        r = load_run(get_ctx().store, run_id)
+        if not r:
+            return JSONResponse({"error": "no such run"}, status_code=404)
+        return JSONResponse(build_test_report(r, r.get("file")), media_type="application/fhir+json",
+                            headers={"Content-Disposition": f"attachment; filename=TestReport-{run_id}.json"})
+
+    # ---------------- load ----------------
+
+    @router.get("/load", response_class=HTMLResponse)
+    def load_page(request: Request):
+        ctx = get_ctx()
+        return page(request, "load.html", scenarios=list_scenarios(), peers=ctx.settings.peer_names(),
+                    results=list(reversed(_load_results))[:20],
+                    running=[k for k, t in _running.items() if t.is_alive() and k.startswith("load:")])
+
+    @router.post("/load/run", response_class=HTMLResponse)
+    def load_start(request: Request, scenario: str = Form(...), peer: str = Form("self"), users: int = Form(5),
+                 duration: float = Form(30), ramp: float = Form(0), own: bool = Form(False)):
+        from ..load.runner import LoadConfig, LoadRunner, is_local
+        ctx = get_ctx()
+        target = ctx.settings.peer(peer).base_url
+        if not is_local(target) and not own:
+            return page(request, "message.html", title="Load test refused",
+                        message=f"{target} is not local. Only load systems you own or are authorised to stress, "
+                                f"and confirm that on the form.")
+        cfg = LoadConfig(scenario, peer, max(1, min(users, 200)), max(1, min(duration, 3600)), None, ramp)
+        label = f"load:{scenario}@{peer}"
+
+        def work():
+            summary = LoadRunner(ctx, cfg).run()
+            _load_results.append(summary)
+            del _load_results[:-50]
+
+        t = threading.Thread(target=work, daemon=True, name=label)
+        _running[label] = t
+        t.start()
+        return RedirectResponse("/ui/load", status_code=303)
+
+    @router.get("/load/{idx}", response_class=HTMLResponse)
+    def load_report(idx: int):
+        from ..load.report import render
+        items = list(reversed(_load_results))
+        if not 0 <= idx < len(items):
+            return HTMLResponse("No such load run", status_code=404)
+        return HTMLResponse(render(items[idx]))
+
+    # ---------------- bulk ----------------
+
+    @router.get("/bulk", response_class=HTMLResponse)
+    def bulk_page(request: Request):
+        ctx = get_ctx()
+        return page(request, "bulk.html", peers=ctx.settings.peer_names(), results=list(reversed(_bulk_results))[:20],
+                    running=[k for k, t in _running.items() if t.is_alive() and k.startswith("bulk:")],
+                    jobs=list(ctx.bulk.jobs.values())[-20:])
+
+    @router.post("/bulk/run")
+    def bulk_run(peer: str = Form("self"), level: str = Form("group"), group: str = Form(""),
+                 types: str = Form(""), poll_max: str = Form("")):
+        from ..bulk.client import bulk_export
+        ctx = get_ctx()
+        label = f"bulk:{level}@{peer}"
+
+        def work():
+            out = bulk_export(ctx.peer_client(peer), level, group or None,
+                              [t.strip() for t in types.split(",") if t.strip()] or None, None, None, 600,
+                              float(poll_max) if poll_max else None)
+            _bulk_results.append({"peer": peer, "level": level, "group": group, "ts": time.strftime("%H:%M:%S"),
+                                  **out})
+            del _bulk_results[:-50]
+
+        t = threading.Thread(target=work, daemon=True, name=label)
+        _running[label] = t
+        t.start()
+        return RedirectResponse("/ui/bulk", status_code=303)
 
     @router.get("/simulator", response_class=HTMLResponse)
     def simulator(request: Request):

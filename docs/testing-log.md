@@ -168,3 +168,13 @@ SEKMET fix found while testing:
   12× more often than asked. The spec says clients SHOULD honour it, so the client now does by default and
   records what was requested. The library scenario opts into `poll_max: 10` explicitly, with a comment, for
   speed.
+
+## Round 11: web console catch-up
+The console now covers everything the CLI does: TestScripts (upload/paste, peers, fixtures, variables, TestReport
+download), Load (form with the non-local ownership guard, results, full report), Bulk (client runs plus the
+exports SEKMET served), and topics plus notification kinds on the Subscriptions page. Checked in a real browser.
+SEKMET fixes found while testing:
+- A new route handler named `load_run` shadowed the imported `load_run()`, so run detail and TestReport pages
+  returned 500. Renamed the handler; a UI test now covers the TestScript → TestReport path.
+- Results tables overflowed their panels (link off-screen, horizontal page scroll); they now scroll inside the
+  panel.

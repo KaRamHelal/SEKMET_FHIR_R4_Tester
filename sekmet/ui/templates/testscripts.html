@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_macros.html" import run_pill %}
+{% block title %}TestScripts{% endblock %}
+{% block main %}
+<h1>FHIR TestScripts</h1>
+{% if running %}<div class="panel warn">Running: {{ running|join(', ') }} — <a href="/ui/testscripts">refresh</a></div>{% endif %}
+<div class="split" style="margin-top:16px">
+  <form class="panel" method="post" action="/ui/testscripts/run" enctype="multipart/form-data">
+    <h2>Run a TestScript</h2>
+    <label>Upload (.json / .xml)</label><input type="file" name="file" accept=".json,.xml">
+    <label>…or paste the TestScript</label><textarea name="script" placeholder='{"resourceType": "TestScript", ...}'></textarea>
+    <div class="row">
+      <div><label>Peers (destination 1, 2, …)</label><input name="peers" value="self" list="peerlist"></div>
+      <div><label>Fixture directories (server paths, comma-separated)</label><input name="fixtures"></div>
+    </div>
+    <datalist id="peerlist">{% for p in peers %}<option value="{{ p }}">{% endfor %}</datalist>
+    <label>Fixture download base (blank = offline)</label><input name="fixture_base" value="https://hl7.org/fhir/R4">
+    <label>Variables (name=value per line)</label><textarea name="vars" style="min-height:60px"></textarea>
+    <p><button>Run</button></p>
+  </form>
+  <div class="panel">
+    <h2>TestScript runs</h2>
+    <div class="scroll"><table>{% for r in runs %}<tr><td><a href="/ui/runs/{{ r.id }}">{{ r.scenario }}</a><div class="mute mono">{{ r.id }}</div></td>
+      <td>{{ r.peer }}</td><td>{{ run_pill(r.status) }}</td><td><a href="/ui/testreport/{{ r.id }}">TestReport</a></td></tr>
+    {% else %}<tr><td class="mute">No TestScript runs yet. CLI: <code>sekmet testscript run scripts/ -p self</code></td></tr>{% endfor %}</table></div>
+  </div>
+</div>
+{% endblock %}

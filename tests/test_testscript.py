@@ -75,3 +75,24 @@ def test_export_run_and_replay(live):
     replay = TestScriptRunner(live, ["self"], fixture_base_url=None).run(ts)
     failures = [f"{s.name}: {s.message}" for s in replay.steps if s.status in ("failed", "error")]
     assert not failures, failures[:5]
+
+
+def test_ui_testscript_and_testreport(live):
+    import json
+    import time
+    import httpx
+    root = live.settings.root_url
+    r = httpx.post(f"{root}/ui/testscripts/run", data={"script": json.dumps(SCRIPT), "peers": "self",
+                                                       "fixture_base": ""}, follow_redirects=False)
+    assert r.status_code == 303
+    for _ in range(50):
+        runs = [x for x in live.store.query("SELECT id, status FROM runs WHERE id LIKE 'ts-%' ORDER BY ts DESC")]
+        if runs:
+            break
+        time.sleep(0.2)
+    rep = httpx.get(f"{root}/ui/testreport/{runs[0]['id']}")
+    assert rep.status_code == 200 and rep.json()["resourceType"] == "TestReport"
+    assert "TestScript runs" in httpx.get(f"{root}/ui/testscripts").text
+    refused = httpx.post(f"{root}/ui/load/run", data={"scenario": "adt_merge_update", "peer": "self", "users": 2,
+                                                      "duration": 2})
+    assert refused.status_code in (200, 303)

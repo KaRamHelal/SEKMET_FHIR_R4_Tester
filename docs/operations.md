@@ -106,7 +106,10 @@ peer name). It reacts only to writes from outside SEKMET.
 ## Where to look
 
 - **Console `/ui`**: resources, workflow forms, scenario runs, traffic (every request and response in both
-  directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
+  directions; `Authorization`, secrets and tokens are redacted), peers, **TestScripts** (upload or paste, run,
+  download the TestReport), **Load** (start runs, see results, open the full report; non-local peers need the
+  ownership checkbox), **Bulk** (test a peer's `$export`, see exports SEKMET served), subscriptions (plus the
+  topics offered and the notification kinds), simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
 

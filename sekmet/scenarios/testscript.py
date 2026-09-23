@@ -468,10 +468,16 @@ def runner_persist(ctx, result: ScenarioResult) -> None:
 _TR_RESULT = {"passed": "pass", "warning": "warning", "failed": "fail", "error": "error", "skipped": "skip"}
 
 
-def build_test_report(result: ScenarioResult, script_ref: str | None = None) -> dict:
-    """TestReport resource for a TestScript run (or any SEKMET scenario run)."""
+def build_test_report(result: "ScenarioResult | dict", script_ref: str | None = None) -> dict:
+    """TestReport resource for a TestScript run (or any SEKMET scenario run, live object or stored dict)."""
+    if isinstance(result, dict):
+        from types import SimpleNamespace
+        d = result
+        result = SimpleNamespace(**{k: d.get(k) for k in ("name", "file", "peer", "status")},
+                                 steps=[SimpleNamespace(**s) for s in d.get("steps", [])],
+                                 counts=d.get("counts") or {})
     setup, tests, teardown = [], {}, []
-    for s in result.steps if not isinstance(result, dict) else []:
+    for s in result.steps:
         section, _, label = s.name.partition(": ")
         entry = {("assert" if s.kind == "assert" else "operation"): {
             "result": _TR_RESULT.get(s.status, "error"), "message": (s.message or label)[:1000]}}

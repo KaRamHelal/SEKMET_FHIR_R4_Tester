@@ -175,7 +175,7 @@ def test_traffic_logged(client):
 def test_ui_pages_render(client):
     client.post("/fhir/Patient", json=PAT)
     for path in ["/ui", "/ui/resources?type=Patient", "/ui/workflows", "/ui/traffic", "/ui/scenarios", "/ui/peers",
-                 "/ui/subscriptions", "/ui/validate", "/ui/simulator"]:
+                 "/ui/subscriptions", "/ui/validate", "/ui/simulator", "/ui/testscripts", "/ui/load", "/ui/bulk"]:
         r = client.get(path)
         assert r.status_code == 200, (path, r.text[:500])
     pid = client.get("/fhir/Patient").json()["entry"][0]["resource"]["id"]

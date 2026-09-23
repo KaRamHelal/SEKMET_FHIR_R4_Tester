@@ -10,7 +10,7 @@
 <header>
   <div class="brand">SEKMET <small>{{ settings.facility_name }} · FHIR R4 micro HIS</small></div>
   <nav>
-    {% for key, label in [("dashboard","Dashboard"),("resources","Resources"),("workflows","Workflows"),("scenarios","Scenarios"),("traffic","Traffic"),("peers","Peers"),("subscriptions","Subscriptions"),("simulator","Simulator"),("validate","Validate")] %}
+    {% for key, label in [("dashboard","Dashboard"),("resources","Resources"),("workflows","Workflows"),("scenarios","Scenarios"),("traffic","Traffic"),("peers","Peers"),("testscripts","TestScripts"),("load","Load"),("bulk","Bulk"),("subscriptions","Subscriptions"),("simulator","Simulator"),("validate","Validate")] %}
     <a href="/ui{% if key != 'dashboard' %}/{{ key }}{% endif %}" class="{{ 'on' if nav.startswith(key) or (key=='resources' and nav=='resource') or (key=='scenarios' and nav=='run') or (key=='traffic' and nav=='traffic_detail') else '' }}">{{ label }}</a>
     {% endfor %}
   </nav>
