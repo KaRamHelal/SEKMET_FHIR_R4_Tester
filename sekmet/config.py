@@ -49,6 +49,8 @@ class Peer(BaseModel):
     timeout: float = 30.0
     verify_tls: bool = True
     prefer_return: Literal["representation", "minimal", "OperationOutcome", ""] = "representation"
+    # actors this peer plays beyond being a FHIR store; scenario steps needing an actor skip otherwise
+    roles: list[Literal["lab-filler", "imaging-filler", "payer", "scheduler", "pharmacy"]] = Field(default_factory=list)
 
 
 class SmartClient(BaseModel):
@@ -142,7 +144,8 @@ class Settings(BaseModel):
 
     def peer(self, name: str) -> Peer:
         if name == "self" and "self" not in self.peers:
-            return Peer(base_url=self.base_url.rstrip("/"), auth=_self_auth(self))
+            roles = ["lab-filler", "imaging-filler", "payer", "scheduler", "pharmacy"] if self.simulator.enabled else []
+            return Peer(base_url=self.base_url.rstrip("/"), auth=_self_auth(self), roles=roles)
         if name not in self.peers:
             raise KeyError(f"Unknown peer '{name}'. Known: {', '.join(self.peer_names())}")
         return self.peers[name]

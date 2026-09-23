@@ -3,7 +3,7 @@ description: >
   Registers an R4 rest-hook Subscription on the peer pointing at SEKMET's /hooks endpoint, triggers matching
   and non-matching changes, and verifies notification delivery. Requires the peer to reach SEKMET's public_url.
 tags: [subscriptions]
-requires: {resource: Subscription, interaction: create}
+requires: {resource: Subscription, interaction: create, public_url: true}
 steps:
   - {name: Register patient, action: adt.register_patient, save: reg}
   - name: Subscribe to this patient's encounters

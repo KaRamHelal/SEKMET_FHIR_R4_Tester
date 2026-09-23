@@ -113,17 +113,17 @@ def scenario_run(names: list[str] = typer.Argument(..., help="scenario ids/paths
             typer.secho(str(e), fg="red")
             continue
         for s in r.steps:
-            color = {"passed": "green", "failed": "red", "error": "red", "skipped": "yellow"}[s.status]
+            color = {"passed": "green", "warning": "yellow", "failed": "red", "error": "red", "skipped": "blue"}[s.status]
             typer.secho(f"  {s.status.upper():<7}", fg=color, nl=False)
             typer.echo(f" {s.index:>2}. {s.name}  ({s.duration_ms:.0f} ms)")
-            if s.status in ("failed", "error"):
-                typer.secho(f"           {s.message[:1500]}", fg="red")
+            if s.status in ("failed", "error", "warning", "skipped") and s.message:
+                typer.secho(f"           {s.message[:1500]}", fg="red" if s.status in ("failed", "error") else "yellow")
         typer.secho(f"  => {r.status.upper()} in {r.duration_ms / 1000:.1f}s  run={r.run_id}",
-                    fg="green" if r.status == "passed" else "red")
+                    fg="green" if r.status == "passed" else "yellow" if r.status in ("warning", "skipped") else "red")
         results.append(r.to_dict())
     stamp = time.strftime("%Y%m%d-%H%M%S")
     paths = write_reports(results, Path(report_dir) / f"{stamp}-{peer}")
-    passed = sum(r["status"] in ("passed", "skipped") for r in results)
+    passed = sum(r["status"] in ("passed", "warning", "skipped") for r in results)
     typer.secho(f"\n{passed}/{len(results)} scenarios passed. Reports: {paths['html']}", bold=True)
     if server:
         server.should_exit = True

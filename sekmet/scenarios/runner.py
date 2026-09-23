@@ -49,7 +49,7 @@ class StepResult:
     index: int
     name: str
     kind: str
-    status: str = "passed"  # passed | failed | error | skipped
+    status: str = "passed"  # passed | warning | failed | error | skipped
     message: str = ""
     duration_ms: float = 0
     traffic_ids: list[int] = field(default_factory=list)
@@ -195,7 +195,7 @@ class ScenarioRunner:
                 kind = next((k for k in ("action", "request", "assert", "wait_for", "subscribe", "set", "sleep",
                                          "validate") if k in step), "unknown")
                 sr = StepResult(i + 1, step.get("name") or f"{kind} {step.get(kind) if isinstance(step.get(kind), str) else ''}".strip(), kind)
-                step_skip = self._capability_gap(step.get("requires"))
+                step_skip = self._check_requires(step.get("requires") or {})
                 if skip_reason or step_skip or (failed and not step.get("always", False)):
                     sr.status, sr.message = "skipped", skip_reason or step_skip or "previous step failed"
                     result.steps.append(sr)
@@ -205,7 +205,9 @@ class ScenarioRunner:
                 try:
                     self._step(step, kind, v, state, default_target, sr)
                 except StepFailed as e:
-                    sr.status, sr.message = "failed", str(e)
+                    # level: should -> spec SHOULD / best practice: report as a warning, never block later steps
+                    sr.status = "warning" if step.get("level") == "should" else "failed"
+                    sr.message = str(e)
                 except Exception as e:
                     sr.status, sr.message = "error", f"{type(e).__name__}: {e}"
                     if not isinstance(e, (KeyError, ValueError)):
@@ -224,7 +226,8 @@ class ScenarioRunner:
         result.duration_ms = round((time.perf_counter() - start) * 1000, 1)
         statuses = {s.status for s in result.steps}
         result.status = ("error" if "error" in statuses else "failed" if "failed" in statuses
-                         else "skipped" if statuses == {"skipped"} else "passed")
+                         else "skipped" if statuses == {"skipped"} else "warning" if "warning" in statuses
+                         else "passed")
         self._persist(result)
         return result
 
@@ -422,6 +425,15 @@ class ScenarioRunner:
             return "requires the simulator to be enabled"
         if req.get("loopback") and self.peer != "self":
             return "requires the loopback peer 'self'"
+        if req.get("role"):
+            peer = self.ctx.settings.peer(self.peer)
+            if req["role"] not in peer.roles:
+                return (f"peer does not play role '{req['role']}' (declare peers.{self.peer}.roles to test it)")
+        if req.get("public_url") and self.peer != "self":
+            root = self.ctx.settings.root_url
+            if any(h in root for h in ("://localhost", "://127.", "://0.0.0.0", "://[::1]")):
+                return (f"needs SEKMET reachable by the peer for callbacks; set public_url "
+                        f"(currently {root})")
         return self._capability_gap(req)
 
     def _capabilities(self) -> dict:

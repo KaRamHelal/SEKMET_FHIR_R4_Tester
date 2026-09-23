@@ -72,7 +72,6 @@ steps:
     save: updated
 
   - name: Stale If-Match is rejected (409/412)
-    continue_on_failure: true
     request:
       method: PUT
       path: "Patient/${created.body.id}"
@@ -135,11 +134,12 @@ steps:
     expect: {status: 200, fhirpath: ["Bundle.link.where(relation = 'next').exists()"]}
 
   - name: Invalid resource is rejected
-    continue_on_failure: true
+    level: should   # many servers deliberately accept unknown elements; report, don't fail
     request:
       method: POST
       path: Patient
-      body: {resourceType: Patient, gender: female, notAnElement: true}
+      # unique per run: some servers (e.g. HAPI) de-duplicate identical creates and would answer 412 instead
+      body: {resourceType: Patient, identifier: [{system: "${ids.mrn}", value: "INV${uid}"}], gender: female, notAnElement: true}
     expect: {status: [400, 422], fhirpath: ["OperationOutcome.issue.exists()"]}
 
   - name: Delete

@@ -2,7 +2,7 @@
 {% if s is none %}<span class="pill bad">ERR</span>{% elif s < 300 %}<span class="pill ok">{{ s }}</span>{% elif s < 400 %}<span class="pill">{{ s }}</span>{% else %}<span class="pill bad">{{ s }}</span>{% endif %}
 {%- endmacro %}
 {% macro run_pill(s) -%}
-<span class="pill {{ 'ok' if s == 'passed' else 'warn' if s == 'skipped' else 'bad' }}">{{ s }}</span>
+<span class="pill {{ 'ok' if s == 'passed' else 'warn' if s in ('skipped', 'warning') else 'bad' }}">{{ s }}</span>
 {%- endmacro %}
 {% macro traffic_table(rows) -%}
 <div class="scroll"><table>

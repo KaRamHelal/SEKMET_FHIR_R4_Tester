@@ -3,7 +3,8 @@ description: >
   SEKMET places a lab order on the peer and waits for the peer (LIS/filler) to produce a DiagnosticReport.
   Against the loopback peer 'self' the built-in simulator plays the filler.
 tags: [orders, lab, filler]
-simulator: true   # on the loopback peer the built-in simulator plays the filler
+simulator: true
+requires: {role: lab-filler}   # on the loopback peer the built-in simulator plays the filler
 steps:
   - {name: Register patient, action: adt.register_patient, save: reg}
   - name: Place CBC order

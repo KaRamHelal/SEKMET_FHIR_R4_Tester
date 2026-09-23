@@ -36,6 +36,8 @@ def junit(results: list[dict]) -> str:
                 ET.SubElement(case, "error", message=s["message"][:500]).text = s["message"]
             elif s["status"] == "skipped":
                 ET.SubElement(case, "skipped", message=s["message"])
+            elif s["status"] == "warning":
+                ET.SubElement(case, "system-err").text = f"WARNING (SHOULD-level): {s['message']}"
             if s.get("traffic_ids"):
                 ET.SubElement(case, "system-out").text = f"traffic ids: {s['traffic_ids']}"
     ET.indent(suites)
@@ -48,7 +50,7 @@ def _checks_text(s: dict) -> str:
 
 def html_report(results: list[dict], traffic_lookup=None) -> str:
     e = html.escape
-    total = {k: sum(r["status"] == k for r in results) for k in ("passed", "failed", "error", "skipped")}
+    total = {k: sum(r["status"] == k for r in results) for k in ("passed", "warning", "failed", "error", "skipped")}
     parts = [f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SEKMET run report</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -56,12 +58,12 @@ def html_report(results: list[dict], traffic_lookup=None) -> str:
 @media(prefers-color-scheme:dark){{:root{{--bg:#161614;--fg:#ecebe6;--mute:#9d9b93;--line:#2e2d29;--card:#1e1e1b;--pass:#6fcf97;--fail:#ff8a80;--skip:#d9c56b}}}}
 body{{font:14px/1.5 ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:24px 16px;max-width:1100px;margin:auto}}
 h1{{font-size:20px;margin:0 0 4px}} .mute{{color:var(--mute)}} .card{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:16px 0}}
-.passed{{color:var(--pass)}} .failed,.error{{color:var(--fail)}} .skipped{{color:var(--skip)}}
+.passed{{color:var(--pass)}} .warning{{color:var(--skip)}} .failed,.error{{color:var(--fail)}} .skipped{{color:var(--skip)}}
 table{{border-collapse:collapse;width:100%}} td,th{{text-align:left;padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}}
 code,pre{{font:12px ui-monospace,monospace}} pre{{white-space:pre-wrap;margin:4px 0;overflow-x:auto}}
 .badge{{font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.04em}}
 </style></head><body><h1>SEKMET FHIR R4 Tester &mdash; run report</h1>
-<p class="mute">{len(results)} scenario(s): {total['passed']} passed, {total['failed']} failed, {total['error']} error, {total['skipped']} skipped</p>"""]
+<p class="mute">{len(results)} scenario(s): {total['passed']} passed, {total['warning']} with warnings, {total['failed']} failed, {total['error']} error, {total['skipped']} skipped</p>"""]
     for r in results:
         parts.append(f"""<div class="card"><h2 style="font-size:16px;margin:0">{e(r['name'])}
 <span class="badge {r['status']}">{r['status']}</span></h2>
