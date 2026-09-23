@@ -34,6 +34,15 @@ def capability_statement(svc) -> dict:
         }
         ops = [{"name": name.lstrip("$"), "definition": f"http://hl7.org/fhir/OperationDefinition/{rtype}-{name.lstrip('$')}"}
                for (t, name) in svc.operations if t == rtype]
+        if rtype == "Subscription":
+            from ..subscriptions.backport import EXT_TOPIC_CANONICAL, PROFILE
+            res["supportedProfile"] = [PROFILE]
+            engine = getattr(getattr(svc, "ctx_ref", None), "subscriptions", None)
+            topics = engine.topics() if engine else {}
+            res["extension"] = [{"url": EXT_TOPIC_CANONICAL, "valueCanonical": url} for url in sorted(topics)]
+            for o in ops:
+                if o["name"] == "status":
+                    o["definition"] = "http://hl7.org/fhir/uv/subscriptions-backport/OperationDefinition/backport-subscription-status"
         if ops:
             res["operation"] = ops
         resources.append(res)

@@ -43,3 +43,30 @@ def test_wait_for_fhirpath_is_applied(live):
                       "fhirpath": "Patient.gender = 'no-such-gender'", "timeout": 1}}]}
     r = ScenarioRunner(live, "self").run(spec)
     assert r.steps[1].status == "failed" and "Timed out" in r.steps[1].message
+
+
+def test_backport_topics_advertised_and_status(live):
+    import httpx
+    base = live.settings.base_url
+    cs = httpx.get(f"{base}/metadata").json()
+    sub = next(r for r in cs["rest"][0]["resource"] if r["type"] == "Subscription")
+    topics = [e["valueCanonical"] for e in sub.get("extension", [])]
+    assert "http://sekmet.dev/fhir/SubscriptionTopic/encounter-complete" in topics
+    assert any(o["name"] == "status" for o in sub["operation"])
+    assert httpx.get(f"{base}/Basic", params={"code": "SubscriptionTopic"}).json()["total"] >= 6
+
+
+def test_backport_rejects_unknown_topic_and_bad_filter(live):
+    import time
+    import httpx
+    from sekmet.subscriptions.backport import build_subscription
+    base = live.settings.base_url
+    bad_topic = build_subscription("http://nope/topic", f"{live.settings.root_url}/hooks/self/x")
+    s1 = httpx.post(f"{base}/Subscription", json=bad_topic).json()
+    bad_filter = build_subscription("http://sekmet.dev/fhir/SubscriptionTopic/encounter-complete",
+                                    f"{live.settings.root_url}/hooks/self/x", ["Encounter?status=finished"])
+    s2 = httpx.post(f"{base}/Subscription", json=bad_filter).json()
+    time.sleep(0.5)
+    for s, word in ((s1, "Unknown SubscriptionTopic"), (s2, "not allowed by topic")):
+        cur = httpx.get(f"{base}/Subscription/{s['id']}").json()
+        assert cur["status"] == "error" and word in cur.get("error", ""), cur

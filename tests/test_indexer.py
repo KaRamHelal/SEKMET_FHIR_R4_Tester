@@ -49,3 +49,25 @@ def test_reference_helpers_accept_absolute_and_versioned_forms():
                                        {"actor": {"reference": "https://s/r4/Patient/p"}}]}
     assert _actor(appt, "Patient")["reference"].endswith("Patient/p")
     assert _actor(appt, "Location", required=False) is None
+
+
+def test_backport_notification_is_structurally_valid_and_round_trips():
+    from sekmet.fhir.validation import has_errors, structural_issues
+    from sekmet.subscriptions.backport import build_subscription, notification_bundle, parse_notification
+    sub = build_subscription("http://t/topic", "http://x/hook", ["Encounter?patient=Patient/p"], "full-resource")
+    sub["id"] = "s1"
+    assert not has_errors(structural_issues(sub)), structural_issues(sub)
+    enc = {"resourceType": "Encounter", "id": "e1", "status": "finished",
+           "class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "IMP"}}
+    b = notification_bundle(sub, "http://base/fhir", "event-notification", 3,
+                            [{"number": 3, "focus": "Encounter/e1", "context": ["Patient/p"]}], [enc])
+    assert not has_errors(structural_issues(b)), structural_issues(b)
+    parsed = parse_notification(b)
+    assert parsed["type"] == "event-notification" and parsed["topic"] == "http://t/topic"
+    assert parsed["events"][0]["focus"] == "http://base/fhir/Encounter/e1" and parsed["resources"][0]["id"] == "e1"
+    # camelCase variant (other implementations) is understood too
+    camel = {"resourceType": "Bundle", "type": "history", "entry": [{"resource": {"resourceType": "Parameters", "parameter": [
+        {"name": "type", "valueCode": "event-notification"},
+        {"name": "notificationEvent", "part": [{"name": "eventNumber", "valueString": "1"},
+                                               {"name": "focus", "valueReference": {"reference": "Encounter/e1"}}]}]}}]}
+    assert parse_notification(camel)["events"][0]["focus"] == "Encounter/e1"

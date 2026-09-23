@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS traffic (
 CREATE INDEX IF NOT EXISTS traffic_run ON traffic(run_id);
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, peer TEXT, hook TEXT, method TEXT, path TEXT,
-  headers TEXT, body TEXT, resource_type TEXT, resource_id TEXT, traffic_id INTEGER);
+  headers TEXT, body TEXT, resource_type TEXT, resource_id TEXT, traffic_id INTEGER,
+  kind TEXT, topic TEXT, subscription TEXT);
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, ts TEXT NOT NULL, scenario TEXT, peer TEXT, status TEXT, summary TEXT, result TEXT);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
@@ -73,6 +74,13 @@ class Store:
         self._pending: list[WriteEvent] = []
         self.listeners: list[Listener] = []
         self._seq = self.conn.execute("SELECT COALESCE(MAX(seq),0) FROM versions").fetchone()[0]
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(notifications)")}
+        for col in ("kind", "topic", "subscription"):
+            if col not in cols:
+                self.conn.execute(f"ALTER TABLE notifications ADD COLUMN {col} TEXT")
 
     # ---------------- transactions & events ----------------
 
@@ -268,7 +276,8 @@ class Store:
             self.conn.execute("UPDATE traffic SET note = COALESCE(note || char(10), '') || ? WHERE id=?", (note, traffic_id))
 
     def log_notification(self, **kw: Any) -> int:
-        cols = ["ts", "peer", "hook", "method", "path", "headers", "body", "resource_type", "resource_id", "traffic_id"]
+        cols = ["ts", "peer", "hook", "method", "path", "headers", "body", "resource_type", "resource_id", "traffic_id",
+                "kind", "topic", "subscription"]
         kw.setdefault("ts", instant())
         vals = [json.dumps(kw[c]) if isinstance(kw.get(c), (dict, list)) else kw.get(c) for c in cols]
         with self.lock:

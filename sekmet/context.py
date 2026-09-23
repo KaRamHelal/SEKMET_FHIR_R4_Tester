@@ -21,10 +21,14 @@ class AppContext:
         self.settings = settings
         self.store = Store(settings.database)
         self.service = FhirService(self.store, settings)
+        self.service.ctx_ref = self  # lets operations reach engines
         self.messenger = Messenger(self)
         register_messaging(self.service, self.messenger)
         self.service.register_operation("Claim", "$submit", claim_submit_op)
         self.subscriptions = SubscriptionEngine(self)
+        self.subscriptions.seed_topics()
+        from .subscriptions.engine import status_op
+        self.service.register_operation("Subscription", "$status", status_op)
         self.simulator = Simulator(self)
         self.store.on_write(self.subscriptions.on_write)
         self.store.on_write(self.simulator.on_write)

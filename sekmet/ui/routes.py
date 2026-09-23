@@ -88,6 +88,10 @@ def peer_summary(ctx, name: str) -> dict:
                                     "versioning": res.get("versioning")}
                       for res in rest.get("resource", [])},
     })
+    sub_res = next((r for r in rest.get("resource", []) if r.get("type") == "Subscription"), {})
+    out["subscription_topics"] = [e.get("valueCanonical") for e in sub_res.get("extension", [])
+                                  if e.get("url", "").endswith("capabilitystatement-subscriptiontopic-canonical")]
+    out["subscription_profiles"] = sub_res.get("supportedProfile", [])
     wanted = ["Patient", "Encounter", "ServiceRequest", "Task", "Observation", "DiagnosticReport", "ImagingStudy",
               "Appointment", "Slot", "Schedule", "MedicationRequest", "MedicationDispense", "Condition",
               "AllergyIntolerance", "Coverage", "Claim", "ClaimResponse", "Subscription"]

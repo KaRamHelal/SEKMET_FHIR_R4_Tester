@@ -1,0 +1,37 @@
+name: Subscriptions - topic-based (R4 Backport) round trip
+description: >
+  Creates an R4 Subscriptions Backport subscription (topic + filter + id-only content) on the peer pointing at
+  SEKMET's /hooks, expects the handshake, then an event-notification when the topic's trigger fires, and checks
+  $status. For peers with other topics: --var topic=<canonical> --var filter_param=<canFilterBy parameter>.
+tags: [subscriptions, backport]
+vars:
+  topic: http://sekmet.dev/fhir/SubscriptionTopic/encounter-complete
+  filter_param: patient
+requires: {resource: Subscription, interaction: create, public_url: true}
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - name: Subscribe to the topic, filtered to this patient
+    subscribe:
+      topic: "${topic}"
+      filters: ["Encounter?${filter_param}=Patient/${reg.patient.id}"]
+      content: id-only
+    save: sub
+  - name: Handshake received
+    wait_for: {notification: {kind: handshake}, timeout: 20}
+  - {name: Admit (should not fire encounter-complete), action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - {name: Discharge (fires encounter-complete), action: adt.discharge, args: {encounter: "${adm.encounter.id}"}}
+  - name: Event notification for the finished encounter (focus fetched for id-only)
+    wait_for:
+      notification: {kind: event-notification, resource_type: Encounter, resource_id: "${adm.encounter.id}"}
+      timeout: 30
+    save: event
+  - name: Focus is the finished encounter
+    assert: {on: event, fhirpath: ["Encounter.status = 'finished'"]}
+  - name: $status reports the subscription
+    level: should
+    requires: {resource: Subscription, operation: status}
+    request: {method: GET, path: "Subscription/${sub.id}/$status"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Bundle.entry.resource.ofType(Parameters).parameter.where(name = 'status').exists()"

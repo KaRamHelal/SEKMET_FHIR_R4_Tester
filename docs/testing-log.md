@@ -17,6 +17,7 @@ adapted to). Only public test servers are recorded here. How to run a round: [op
 | `urn:uuid` resolved in arrays in transactions | ✗ (`Task.basedOn`) | ✓ | ✓ | ✓ | ✓ |
 | de-duplicates identical creates | – | ✓ (412) | – | – | – |
 | classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – | – |
+| topic-based (Backport) Subscriptions | ✓ (handshake, id-only, `$status`) | – | – | – | – |
 | `$process-message` | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ✓ = spec-expected behaviour, ✗ = deviation or missing, – = not observed.
@@ -85,3 +86,20 @@ SEKMET fixes:
 - **HTTPS serving:** `tls_certfile` / `tls_keyfile`, and `sekmet keys tls-cert` for self-signed test certs.
 By design: `3.1.02` requires the `authorization_code` grant plus PKCE `S256`, i.e. user-facing SMART App Launch.
 SEKMET tests system-to-system integration and doesn't claim that capability.
+
+## Round 6: Subscriptions Backport, SEKMET vs fhir-candle
+Built topic-based subscriptions (R4 Backport IG) in SEKMET, both server and subscriber, then tested in both
+directions. No new downloads needed.
+- The **reference format was captured from candle**: first entry `Parameters` with kebab-case names
+  (`events-since-subscription-start`, `notification-event`, `event-number`, `additional-context`), a handshake on
+  creation, and no focus entry for `id-only`. SEKMET emits exactly that and also accepts camelCase and R4B
+  `SubscriptionStatus`.
+- `subscription_backport_roundtrip` passes on loopback and against candle (its `encounter-complete` topic
+  filters on `subject`, hence the new `--var filter_param=subject`).
+SEKMET fixes and additions:
+- Backport subscriptions: topic registry (Basic + SubscriptionTopic extensions), handshake-gated activation,
+  filter validation against `canFilterBy`, event and heartbeat delivery, `$status`, and topics in the
+  CapabilityStatement.
+- Receiver: handshake, heartbeat and event kinds are recorded, and `id-only` focus is fetched from the peer.
+- `requires.public_url` now only gates remote peers; a localhost peer can reach a localhost SEKMET.
+- `scenario run --var name=value` overrides scenario variables.

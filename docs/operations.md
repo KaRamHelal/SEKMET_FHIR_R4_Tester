@@ -26,6 +26,7 @@ Settings are read from `$SEKMET_CONFIG`, else `./settings.yaml`. Env overrides: 
 | `sekmet workflow list` / `workflow run <key> -t <target> -a k=v` | a single hospital workflow step |
 | `sekmet seed --count N -t <target>` | master data + N patients (every other one admitted) |
 | `sekmet subscriptions register <peer>` | creates the `peers.<peer>.subscribe` Subscriptions on the peer |
+| `sekmet scenario run … --var name=value` | overrides a scenario variable (e.g. another peer's topic canonical) |
 | `sekmet keys generate` | key pair for SMART Backend Services; public JWKS at `/.well-known/jwks.json` |
 | `sekmet validate file.json [--conformance]` | structural validation (+ HL7 validator jar) |
 | `sekmet validator download` | fetches `validator_cli.jar` into `tools/` |
@@ -101,6 +102,26 @@ peer name). It reacts only to writes from outside SEKMET.
   directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
+
+## Subscriptions
+
+SEKMET supports both R4 styles, as a server and as a subscriber:
+
+- **Classic rest-hook**: `criteria` is a search (`Encounter?patient=…`). Notifications are the resource
+  (`PUT {endpoint}/{type}/{id}` by default), or an empty POST when there's no payload.
+- **Topic-based (Subscriptions Backport IG)**: `criteria` is a topic canonical, filters go in
+  `backport-filter-criteria`, and content is `empty` / `id-only` / `full-resource`. SEKMET sends a
+  **handshake** (the subscription only becomes `active` if it's accepted), then **event-notification** history
+  Bundles (a `Parameters` status entry, plus resources for `full-resource`) and optional **heartbeats**
+  (`backport-heartbeat-period`). `Subscription/{id}/$status` returns the status.
+- **Topics** are R4 `Basic` resources with the R5 `extension-SubscriptionTopic.*` extensions, listed at
+  `GET /fhir/Basic?code=SubscriptionTopic` and advertised in the CapabilityStatement. Built-in topics
+  (`http://sekmet.dev/fhir/SubscriptionTopic/…`): `encounter-start`, `encounter-complete`,
+  `diagnosticreport-final`, `servicerequest-new`, `appointment-booked`, `patient-change`. To add a topic, POST a
+  `Basic` in the same format; triggers use `fhirPathCriteria` with `%previous` / `%current`.
+- **Receiving:** peers notify `{public_url}/hooks/<peer>/<key>`. Handshakes and heartbeats are recorded with their
+  `kind`. For `id-only` events SEKMET reads the focus resource from the peer (`fetch_on_ping`). Everything is
+  visible in `/ui/subscriptions` and usable in `wait_for: {notification: {kind: …}}`.
 
 ## Serving over HTTPS
 

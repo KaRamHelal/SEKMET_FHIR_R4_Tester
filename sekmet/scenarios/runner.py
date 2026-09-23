@@ -346,7 +346,7 @@ class ScenarioRunner:
             if "notification" in spec:
                 n = spec["notification"] or {}
                 rows = notifications(self.ctx.store, since_id=state["baseline_notification"],
-                                     peer=n.get("peer"), rtype=n.get("resource_type"))
+                                     peer=n.get("peer"), rtype=n.get("resource_type"), kind=n.get("kind"))
                 if n.get("resource_id"):
                     rows = [r for r in rows if r.get("resource_id") == n["resource_id"]]
                 if n.get("fhirpath"):
@@ -380,17 +380,25 @@ class ScenarioRunner:
         key = secrets.token_hex(6)
         peer_name = spec.get("peer", self.peer)
         endpoint = f"{self.ctx.settings.root_url}/hooks/{peer_name}/{key}"
-        sub = {"resourceType": "Subscription", "status": "requested", "reason": spec.get("reason", "SEKMET scenario"),
-               "criteria": spec["criteria"],
-               "channel": {"type": "rest-hook", "endpoint": endpoint,
-                           "header": [f"Authorization: Bearer {self.ctx.settings.subscriptions.hook_token}"]}}
-        if spec.get("payload", "application/fhir+json"):
-            sub["channel"]["payload"] = spec.get("payload", "application/fhir+json")
+        auth_header = [f"Authorization: Bearer {self.ctx.settings.subscriptions.hook_token}"]
+        if spec.get("topic"):  # topic-based (R4 Subscriptions Backport)
+            from ..subscriptions.backport import build_subscription
+            filters = spec.get("filters") or []
+            sub = build_subscription(spec["topic"], endpoint, filters if isinstance(filters, list) else [filters],
+                                     spec.get("content", "id-only"), auth_header, spec.get("heartbeat"),
+                                     spec.get("reason", "SEKMET scenario"))
+        else:
+            sub = {"resourceType": "Subscription", "status": "requested",
+                   "reason": spec.get("reason", "SEKMET scenario"), "criteria": spec["criteria"],
+                   "channel": {"type": "rest-hook", "endpoint": endpoint, "header": auth_header}}
+            if spec.get("payload", "application/fhir+json"):
+                sub["channel"]["payload"] = spec.get("payload", "application/fhir+json")
         if spec.get("end"):
             sub["end"] = spec["end"]
         client = self.ctx.peer_client(peer_name)
         r = client.create(sub)
-        self.ctx.store.kv_set(f"hook:{peer_name}:{key}", json.dumps({"criteria": spec["criteria"], "since": instant()}))
+        self.ctx.store.kv_set(f"hook:{peer_name}:{key}", json.dumps(
+            {"criteria": spec.get("criteria") or spec.get("topic"), "since": instant()}))
         sr.checks.append({"check": "Subscription created", "ok": r.ok, "detail": f"HTTP {r.status} {r.outcome_text() if not r.ok else ''}"})
         self._raise_if_failed(sr)
         created = client.fetch_resource(r, "Subscription")
@@ -431,8 +439,10 @@ class ScenarioRunner:
             if req["role"] not in peer.roles:
                 return (f"peer does not play role '{req['role']}' (declare peers.{self.peer}.roles to test it)")
         if req.get("public_url") and self.peer != "self":
+            local = ("://localhost", "://127.", "://0.0.0.0", "://[::1]")
             root = self.ctx.settings.root_url
-            if any(h in root for h in ("://localhost", "://127.", "://0.0.0.0", "://[::1]")):
+            peer_local = any(h in self.ctx.settings.peer(self.peer).base_url for h in local)
+            if any(h in root for h in local) and not peer_local:
                 return (f"needs SEKMET reachable by the peer for callbacks; set public_url "
                         f"(currently {root})")
         return self._capability_gap(req)

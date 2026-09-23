@@ -94,6 +94,7 @@ def scenario_run(names: list[str] = typer.Argument(..., help="scenario ids/paths
                  peer: str = typer.Option("self", "--peer", "-p"),
                  tag: Optional[str] = typer.Option(None, help="with 'all': only scenarios with this tag"),
                  report_dir: str = typer.Option("reports", help="directory for JSON/JUnit/HTML reports"),
+                 var: list[str] = typer.Option([], "--var", help="scenario variable override name=value (repeatable)"),
                  serve: Optional[bool] = typer.Option(None, "--serve/--no-serve",
                                                       help="start an embedded server (default: when not running)"),
                  config: Optional[str] = ConfigOpt):
@@ -114,7 +115,7 @@ def scenario_run(names: list[str] = typer.Argument(..., help="scenario ids/paths
     for n in names:
         typer.secho(f"\n▶ {n}  (peer: {peer})", bold=True)
         try:
-            r = runner.run(n)
+            r = runner.run(n, dict(v.split("=", 1) for v in var))
         except FileNotFoundError as e:
             typer.secho(str(e), fg="red")
             continue

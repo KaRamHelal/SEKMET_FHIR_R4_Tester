@@ -626,6 +626,13 @@ _DEFS: dict[str, str] = {
         organization:reference:owner
         location:reference:location
     """,
+    "Basic": """
+        identifier:token:identifier
+        code:token:code
+        subject:reference:subject
+        author:reference:author
+        created:date:created
+    """,
     "Group": """
         identifier:token:identifier
         type:token:type

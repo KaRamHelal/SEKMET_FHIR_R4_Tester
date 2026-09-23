@@ -18,6 +18,7 @@ and skip on their own.
 | `clinical_documentation` | Conditions by category / clinical status, allergy, procedure, vitals incl. BP components | – | – |
 | `billing_claim` | Coverage, Account, ChargeItem, Claim; then the payer's ClaimResponse and `Claim/$submit` | payer steps need role `payer` | – |
 | `subscription_roundtrip` | R4 rest-hook Subscription on the peer, matching changes notified to SEKMET `/hooks` | `Subscription` create, `public_url` | candle supports backport (topic) Subscriptions only |
+| `subscription_backport_roundtrip` | R4 **Subscriptions Backport** (topic-based): handshake, filtered `id-only` event for `encounter-complete` (admit must not fire), focus fetched from the peer, `$status` | `Subscription` create, `public_url` for remote peers. Other peers' topics: `--var topic=… --var filter_param=…` | candle: passes (its topic filters on `subject`) |
 | `messaging_adt_orders` | A04/A01/O21/R01/A03 message Bundles to `$process-message`, `response.code = ok`; malformed message rejected | peer advertises messaging | – |
 
 Per-server results and what they changed in SEKMET are in [testing-log.md](testing-log.md).
@@ -48,7 +49,10 @@ steps:
   - wait_for: {search: {type: DiagnosticReport, params: {based-on: "ServiceRequest/${o.service_request.id}"}},
                fhirpath: "DiagnosticReport.status = 'final'", timeout: 60}
   - wait_for: {notification: {resource_type: Encounter, resource_id: "${adm.encounter.id}"}, timeout: 30}
-  - subscribe: {criteria: "Encounter?patient=Patient/${reg.patient.id}"}   # deleted again after the run
+  - subscribe: {criteria: "Encounter?patient=Patient/${reg.patient.id}"}   # classic R4 rest-hook; deleted after run
+  - subscribe: {topic: "http://sekmet.dev/fhir/SubscriptionTopic/encounter-complete",   # R4 Backport
+                filters: ["Encounter?patient=Patient/${reg.patient.id}"], content: id-only, heartbeat: 60}
+  - wait_for: {notification: {kind: handshake}, timeout: 20}   # kind: handshake | heartbeat | event-notification
   - validate: {resource: "${reg.patient}", conformance: false}
   - set: {k: v}
   - sleep: 1
@@ -71,7 +75,7 @@ steps:
 | `simulator` | simulator must be on |
 | `loopback` | peer must be `self` |
 
-**Variables:** `${peer}`, `${peer_base}`, `${run_id}`, `${uid}` (unique per run), `${now}`, `${today}`,
+**Variables:** override any `vars:` entry on the command line with `--var name=value`. Built-ins: `${peer}`, `${peer_base}`, `${run_id}`, `${uid}` (unique per run), `${now}`, `${today}`,
 `${ids.<system>}`, `${settings.…}`, plus everything saved. A value that is exactly `${x}` keeps its type (object,
 list); inside text it's stringified.
 
