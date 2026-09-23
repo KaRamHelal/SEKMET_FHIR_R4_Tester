@@ -14,3 +14,10 @@ settings.yaml
 *.db-*
 validator_cli.jar
 tools/
+# secrets and captured data never go into this public repo
+*.secret
+*.pem
+*.key
+.env
+.env.*
+settings.*.local.yaml
