@@ -7,7 +7,7 @@ and skip on their own.
 
 | id | Purpose | Needs | Known peer behaviour seen |
 |---|---|---|---|
-| `conformance_smoke` | Core REST: CapabilityStatement, CRUD, conditional create, If-Match 409/412, vread, history, transaction with `urn:uuid`, chained search + `_include`, paging, invalid-resource rejection (SHOULD), `search.mode` (SHOULD), delete→410 | – | candle: 500 on stale If-Match, no `next` link; HAPI/candle accept unknown elements; Spark omits `search.mode` |
+| `conformance_smoke` | Core REST: CapabilityStatement, CRUD, conditional create, If-Match 409/412, vread, history, transaction with `urn:uuid`, chained search + `_include`, paging, invalid-resource rejection (SHOULD), `search.mode` (SHOULD), delete→410 | – | candle: 500 on stale If-Match, no `next` link; HAPI/WildFHIR/candle accept unknown elements; Spark omits `search.mode` |
 | `adt_admit_transfer_discharge` | Register, admit, transfer (location history), discharge (disposition, `period.end`), version history | – | candle: no history |
 | `adt_merge_update` | Demographic update; merge via `Patient.link` (replaced-by / replaces), old MRN kept | – | – |
 | `lab_order_to_result` | SEKMET drives placer **and** filler: SR+Task transaction, Task states, Specimen, Observations + DiagnosticReport transaction, `based-on` / `_include` searches | – | candle leaves `urn:uuid` unresolved in `Task.basedOn[]` |

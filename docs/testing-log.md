@@ -6,18 +6,18 @@ adapted to). Only public test servers are recorded here. How to run a round: [op
 
 ## Peer behaviour matrix
 
-| Behaviour | candle | HAPI 8.13 | Firely 6.9 | Spark |
-|---|---|---|---|---|
-| history / vread | ✗ | ✓ | ✓ | ✓ |
-| stale `If-Match` → 409/412 | 500 | ✓ | ✓ | ✓ |
-| rejects unknown elements | ✗ | ✗ | ✓ | ✓ |
-| `next` paging link | ✗ | ✓ | ✓ | ✓ |
-| `entry.search.mode` present | ✓ | ✓ | ✓ | ✗ |
-| references returned | relative | relative | **absolute** | relative |
-| `urn:uuid` resolved in arrays in transactions | ✗ (`Task.basedOn`) | ✓ | ✓ | ✓ |
-| de-duplicates identical creates | – | ✓ (412) | – | – |
-| classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – |
-| `$process-message` | ✗ | ✗ | ✗ | ✗ |
+| Behaviour | candle | HAPI 8.13 | Firely 6.9 | Spark | WildFHIR 0.7.1 |
+|---|---|---|---|---|---|
+| history / vread | ✗ | ✓ | ✓ | ✓ | ✓ |
+| stale `If-Match` → 409/412 | 500 | ✓ | ✓ | ✓ | ✓ |
+| rejects unknown elements | ✗ | ✗ | ✓ | ✓ | ✗ |
+| `next` paging link | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `entry.search.mode` present | ✓ | ✓ | ✓ | ✗ | ✓ |
+| references returned | relative | relative | **absolute** | relative | relative |
+| `urn:uuid` resolved in arrays in transactions | ✗ (`Task.basedOn`) | ✓ | ✓ | ✓ | ✓ |
+| de-duplicates identical creates | – | ✓ (412) | – | – | – |
+| classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – | – |
+| `$process-message` | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ✓ = spec-expected behaviour, ✗ = deviation or missing, – = not observed.
 
@@ -67,3 +67,8 @@ SEKMET fixes:
   `lab_order_peer_fills` accepted a preliminary report. Both placements now apply. Regression test added.
 - **Docs:** added [operations.md](operations.md) and [scenarios.md](scenarios.md), with portability rules distilled
   from rounds 0 to 3.
+
+## Round 4: WildFHIR public, 0.7.1 (wildfhir.wildfhir.org/r4)
+Result: 12/12 (1 warning), with no SEKMET changes needed. The fixes from rounds 1 to 3 held on a fifth
+implementation.
+Peer behaviour: accepts unknown elements (201); otherwise spec-expected on everything the library checks.
