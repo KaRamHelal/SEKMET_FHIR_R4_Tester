@@ -1,0 +1,21 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {python-version: ["3.11", "3.12", "3.13"]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python-version }}", cache: pip}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+      - name: CLI smoke (packaged scenarios over loopback)
+        run: |
+          mkdir smoke && cd smoke
+          printf 'base_url: http://localhost:8095/fhir\nport: 8095\n' > settings.yaml
+          sekmet scenario run conformance_smoke adt_admit_transfer_discharge --peer self

@@ -1,13 +1,36 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sekmet"
+name = "sekmet-fhir"
 version = "0.1.0"
-description = "SEKMET FHIR R4 Tester - a micro HIS for exercising real HIS FHIR R4 interfaces"
+description = "Micro hospital information system for testing HIS/EHR FHIR R4 integrations end to end: hospital workflows, lab/RIS/pharmacy/payer simulator, Subscriptions, Bulk Data, SMART, TestScript and load testing"
 requires-python = ">=3.11"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "SEKMET contributors"}]
+keywords = ["fhir", "fhir-r4", "hl7", "hl7-fhir", "interoperability", "his", "ehr", "emr", "healthcare",
+            "integration-testing", "test-harness", "mock-server", "simulator", "conformance", "testscript",
+            "smart-on-fhir", "bulk-data", "subscriptions", "load-testing", "lis", "ris"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Healthcare Industry",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Testing :: Mocking",
+  "Topic :: Software Development :: Testing :: Traffic Generation",
+]
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
@@ -26,7 +49,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester"
+Documentation = "https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/docs/operations.md"
+Issues = "https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/issues"
+Changelog = "https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/CHANGELOG.md"
 
 [project.scripts]
 sekmet = "sekmet.cli:app"

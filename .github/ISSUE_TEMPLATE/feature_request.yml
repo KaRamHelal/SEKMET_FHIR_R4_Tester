@@ -1,0 +1,9 @@
+name: Feature / scenario request
+description: A hospital flow, FHIR feature or capability you need to test
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: {label: What do you need to test?, description: "The integration or flow, and which FHIR resources and operations"}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Why existing scenarios don't cover it}

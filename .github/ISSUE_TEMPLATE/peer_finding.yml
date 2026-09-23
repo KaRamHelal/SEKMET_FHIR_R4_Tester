@@ -1,0 +1,12 @@
+name: Server behaviour finding
+description: A FHIR server/HIS deviates from the spec, or SEKMET graded it wrongly
+labels: [finding]
+body:
+  - type: input
+    attributes: {label: Server product and version, description: "Public or anonymised; no customer names"}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Behaviour, description: "What the server does, and what the spec says (link the section)"}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Scenario / step, description: "Which scenario and step surfaced it; SEKMET's verdict"}

@@ -45,3 +45,6 @@ details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .htmx-indicator { display: none; } .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
 .scroll { overflow-x: auto; }
+/* long FHIR ids wrap inside their cell; short tokens (pills, times, peer names) never split */
+td a, td.ok, td.bad { overflow-wrap: anywhere; }
+.pill, td.mono.mute { white-space: nowrap; }

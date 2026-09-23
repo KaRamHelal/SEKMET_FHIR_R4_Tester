@@ -1,0 +1,13 @@
+name: Bug report
+description: SEKMET misbehaves (crash, wrong verdict, wrong FHIR behaviour)
+labels: [bug]
+body:
+  - type: textarea
+    attributes: {label: What happened, description: "Command or scenario, what you expected, what you got"}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Evidence, description: "Report excerpt / traffic (redact hosts and any real data)", render: text}
+  - type: input
+    attributes: {label: Peer, description: "Server product/version under test (e.g. HAPI 8.x), or 'self'"}
+  - type: input
+    attributes: {label: SEKMET version, description: "pip show sekmet-fhir / git commit"}

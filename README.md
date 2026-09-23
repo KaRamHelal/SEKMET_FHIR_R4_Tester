@@ -1,165 +1,194 @@
 # SEKMET FHIR R4 Tester
 
-A **micro HIS** for testing real Hospital Information Systems' FHIR R4 interfaces. SEKMET is not a
-hospital system. It plays the *other side* of normal hospital integration flows, in both directions, and records
-every exchange so you can see exactly where a real HIS deviates from the spec or from your expectations.
+**A micro hospital information system (HIS) that you can point at a real HIS, EHR, LIS, RIS or payer system to test
+its FHIR R4 integration end to end.** SEKMET plays the *other side* of real hospital workflows: it acts as a
+FHIR server that the system calls, as a FHIR client that drives it, and as a lab, radiology, pharmacy or payer
+counterpart. It records every exchange and tells you exactly where the integration breaks.
 
-- **FHIR R4 server** (`/fhir`): the real HIS can push, query, subscribe and message to it.
-- **FHIR R4 client**: it drives the real HIS through ADT, orders/results, scheduling, medications, clinical and billing flows.
-- **Simulator**: when the HIS sends an order, appointment, prescription or claim, SEKMET plays the lab/RIS filler,
-  scheduler, pharmacy or payer and produces the downstream resources.
-- **Scenario runner**: YAML scenarios with FHIRPath assertions, reported as JSON, JUnit XML (for CI) and HTML.
-- **Bulk Data**: serves async `$export` (system, Patient, Group) and tests a peer's `$export` end to end.
-- **Load testing**: any scenario as a user journey for N parallel users, with per-endpoint latency percentiles,
-  error rates, correctness under concurrency and CI gates.
-- **FHIR TestScript**: runs standard TestScripts (JSON/XML) with TestReport output, and exports any run as a
-  replayable TestScript for Touchstone or other engines.
-- **Traffic log**: every request and response in both directions, with correlation and run ids, in the web console.
+[![CI](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/actions/workflows/ci.yml/badge.svg)](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/sekmet-fhir.svg)](https://pypi.org/project/sekmet-fhir/)
+[![Python](https://img.shields.io/pypi/pyversions/sekmet-fhir.svg)](https://pypi.org/project/sekmet-fhir/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4%204.0.1-orange)
+
+```bash
+pip install sekmet-fhir
+sekmet scenario run all --peer self      # 14 hospital scenarios against its own FHIR server, ~20 s
+```
+
+![SEKMET scenario run](https://raw.githubusercontent.com/KaRamHelal/SEKMET_FHIR_R4_Tester/main/docs/images/scenario-run.png)
+
+## The problem
+
+You're integrating with a hospital system over FHIR: registration and ADT feeds, lab orders and results,
+radiology, scheduling, pharmacy, claims, notifications. To test it properly you need **another hospital system**
+that behaves realistically:
+- it places orders and reports results,
+- it books and cancels appointments,
+- it subscribes to changes,
+- it sends FHIR messages,
+- it handles SMART Backend Services auth,
+- and it survives concurrent load.
+
+The usual options are poor:
+- **Generic FHIR servers** (HAPI, Firely…) store resources, but they don't *act*: nothing fulfils your order
+  or pays your claim.
+- **Conformance suites** (Inferno, Touchstone) check the API against specifications, but not your hospital
+  workflows.
+- **Testing against a production partner** is slow, risky, and can't reproduce edge cases on demand.
+
+SEKMET fills that gap. It's a small, scriptable, observable hospital system built only for testing FHIR
+integrations.
+
+## Who it's for
+
+- **HIS/EHR vendors and integration teams** preparing an interface (ADT, orders/results, scheduling, pharmacy,
+  billing) or a go-live.
+- **Lab (LIS), radiology (RIS/PACS), pharmacy and payer system developers** who need a realistic placer or
+  counterpart.
+- **QA teams** who want repeatable FHIR regression tests in CI (JUnit output, exit codes, gates).
+- **Implementers of FHIR features** (Subscriptions, Bulk Data, messaging, SMART) who want to test both the client
+  and the server side.
+- **Anyone evaluating a FHIR server:** "Does it really do what its CapabilityStatement says?"
+
+## Use cases
+
+| You want to… | SEKMET does… |
+|---|---|
+| Check a HIS can **register, admit, transfer and discharge** patients over FHIR | runs the ADT workflows against it and verifies Encounter status, location history, discharge disposition and searches |
+| Test a **lab or radiology interface** | places ServiceRequest + Task, then either fulfils it itself (Specimen, Observations, DiagnosticReport, ImagingStudy) or waits for *your* system to result it |
+| Test the HIS as a **filler** | your system sends orders to SEKMET, and the built-in **simulator** answers as lab, RIS, scheduler, pharmacy or payer |
+| Validate **appointment booking**, **e-prescribing** or **claims** | Schedule/Slot/Appointment, MedicationRequest/Dispense/Administration, Coverage/ChargeItem/Claim/ClaimResponse flows |
+| Test **notifications** | classic R4 rest-hook **and topic-based Subscriptions (R4 Backport IG)**, as publisher and as subscriber |
+| Test **FHIR messaging** | ADT/order/result message Bundles to `$process-message`, with acknowledgements checked |
+| Test **SMART Backend Services / OAuth2** | acts as the SMART client (signed JWT, or client secret for e.g. Keycloak) and as a SMART token server |
+| Test **Bulk Data `$export`** | runs the async export end to end and validates every NDJSON line; also serves `$export` itself |
+| Check **XML** as well as JSON | the whole scenario library can run over `application/fhir+xml` |
+| Run existing **FHIR TestScripts** or produce **TestReports** | built-in TestScript engine; any run can be exported as a replayable TestScript |
+| **Load test** before go-live | N parallel users run hospital journeys, with per-endpoint p95/p99, error rates and **correctness under concurrency**, gated for CI |
+| See **exactly what went over the wire** | every request/response in both directions, correlated per test step, with secrets redacted |
+
+## What's inside
+
+- **FHIR R4 server:** CRUD, versioning, conditional operations, transactions with rollback, rich search
+  (chaining, `_has`, `_include`/`_revinclude`, modifiers, prefixes, paging), JSON and XML, `$everything`,
+  `$validate`, `$process-message`, `Claim/$submit`, `$export`, Subscriptions (rest-hook and Backport topics with
+  `$status`). Auth: none, Basic, bearer, or SMART Backend Services with scopes, over HTTPS.
+- **FHIR client and workflows:** about 40 hospital workflows (ADT, lab and imaging orders/results, scheduling,
+  medications, clinical documentation, billing), with standard terminology (LOINC, SNOMED CT, RxNorm, HL7 v2
+  event codes). They target the local store, a peer over REST, or a peer via FHIR messaging.
+- **Scenario runner:** readable YAML with FHIRPath assertions. It skips steps a peer doesn't advertise
+  (CapabilityStatement-aware), grades SHALL vs SHOULD, and reports to HTML, JSON and JUnit.
+- **TestScript engine:** runs standard FHIR TestScripts (fixtures, variables, XPath/FHIRPath asserts, multi-server)
+  and writes TestReports.
+- **Load mode:** scenarios as user journeys, a guard against loading systems you don't own, and CI gates.
+- **Web console:** dashboard, resources, workflow forms, scenarios, traffic inspector, peers, TestScripts, load,
+  bulk, subscriptions, simulator, validator.
+
+| | |
+|---|---|
+| ![Dashboard](https://raw.githubusercontent.com/KaRamHelal/SEKMET_FHIR_R4_Tester/main/docs/images/dashboard.png) | ![Load report](https://raw.githubusercontent.com/KaRamHelal/SEKMET_FHIR_R4_Tester/main/docs/images/load-report.png) |
+| ![Traffic inspector](https://raw.githubusercontent.com/KaRamHelal/SEKMET_FHIR_R4_Tester/main/docs/images/traffic.png) | ![Subscriptions and topics](https://raw.githubusercontent.com/KaRamHelal/SEKMET_FHIR_R4_Tester/main/docs/images/subscriptions.png) |
 
 ## Quick start
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-cp config/settings.example.yaml settings.yaml      # edit peers / auth
-sekmet serve                                        # FHIR: http://localhost:8090/fhir  Console: http://localhost:8090/ui
+pip install sekmet-fhir                       # Python 3.11+
+sekmet serve                                  # FHIR: http://localhost:8090/fhir   console: http://localhost:8090/ui
 ```
 
-Try it end to end against itself (`self` is the loopback peer):
+Point it at the system you want to test by adding a peer to `settings.yaml` (see
+[config/settings.example.yaml](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/config/settings.example.yaml)):
 
-```bash
-sekmet scenario run all --peer self                 # starts an embedded server if none is running
+```yaml
+peers:
+  my-his:
+    base_url: https://his.example.org/fhir/r4
+    auth: {type: client_credentials, client_id: sekmet, client_secret_file: keys/my-his.secret,
+           token_url: https://auth.example.org/realms/x/protocol/openid-connect/token}
 ```
 
-Then point it at the real system:
-
 ```bash
-sekmet peers test my-his                            # CapabilityStatement + SMART token check + gap list
-sekmet scenario run all --peer my-his               # exit code 1 on any failure; reports in ./reports/
+sekmet peers test my-his                               # read-only: token + CapabilityStatement + gaps
+sekmet scenario run conformance_smoke --peer my-his    # core REST behaviour
+sekmet scenario run all --peer my-his                  # every hospital flow; reports in ./reports/
+sekmet load run adt_admit_transfer_discharge --peer my-his -u 10 -d 60 --i-own-this-system --max-p95 1000
+```
+
+Write your own scenario:
+
+```yaml
+name: Admitted patient appears in the ward census
+steps:
+  - {action: adt.register_patient, save: reg}
+  - {action: adt.admit, args: {patient: "${reg.patient.id}", bed: bed-401-1}, save: adm}
+  - name: Census search
+    request: {method: GET, path: Encounter, params: {status: in-progress, patient: "Patient/${reg.patient.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Encounter).id contains '${adm.encounter.id}'"]}
+```
+
+## How it compares
+
+| | Plays hospital workflows | Acts as a counterpart system | Server under test | Client under test | Load / concurrency | Traffic inspector |
+|---|---|---|---|---|---|---|
+| **SEKMET** | ✓ ADT, orders, scheduling, meds, billing | ✓ lab/RIS/pharmacy/payer simulator | ✓ | ✓ (its server + simulator) | ✓ | ✓ |
+| Inferno test kits | – (conformance to IGs) | – | ✓ | partly (proxy) | – | per test |
+| Touchstone | – (TestScripts) | – | ✓ | ✓ | – | ✓ |
+| HAPI / Firely servers | – (resource stores) | – | – | ✓ (as a target) | – | – |
+| Synthea | synthetic records, not live exchange | – | – | – | – | – |
+
+They complement each other: use Inferno or Touchstone for IG certification, and SEKMET for "does our integration
+actually work, end to end, under load". SEKMET runs standard TestScripts too, so scripts move between tools.
+
+## Tested against
+
+The scenario library has run against **HAPI FHIR 8.x, Firely Server 6.x, Spark, WildFHIR, fhir-candle** (JSON and
+XML) and the **Inferno SMART App Launch kit** (Backend Services). Every round found and fixed real issues, in SEKMET
+and elsewhere. See the [testing log](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/docs/testing-log.md)
+and its peer behaviour matrix.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph SEKMET[SEKMET micro HIS]
+    UI[Web console / CLI] --> RUN[Scenario, TestScript & load runners]
+    RUN --> WF[Hospital workflows<br/>ADT · orders · scheduling · meds · billing]
+    WF -->|local / REST / messaging| CLI[FHIR client<br/>JSON·XML · SMART · OAuth2]
+    SRV[FHIR R4 server<br/>search · transactions · $export<br/>Subscriptions · messaging · SMART] --> STORE[(SQLite store<br/>+ traffic log)]
+    SRV --> SIM[Simulator<br/>lab · RIS · pharmacy · payer]
+    SIM --> STORE
+  end
+  CLI -->|drives| HIS[(System under test<br/>HIS / EHR / LIS / payer)]
+  HIS -->|calls, subscribes, messages| SRV
+  SRV -->|rest-hook / backport notifications| HIS
 ```
 
 ## Documentation
 
-- [docs/operations.md](docs/operations.md): install, commands, procedure for a new system, configuration
-  reference, result statuses, troubleshooting, public-repo rules.
-- [docs/scenarios.md](docs/scenarios.md): scenario catalogue with known peer behaviour, authoring reference,
-  portability rules.
-- [docs/testing-log.md](docs/testing-log.md): per-server test rounds, behaviour matrix, and what each round
-  changed in SEKMET.
+- [Operations guide](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/docs/operations.md): installation,
+  commands, configuration reference, auth, formats, Subscriptions, Bulk Data, TestScript, load testing,
+  troubleshooting.
+- [Scenarios](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/docs/scenarios.md): scenario catalogue,
+  authoring reference, portability rules learned from real servers.
+- [Testing log](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/docs/testing-log.md): what each test
+  round against real servers found.
 
-## What it covers
+## Safety
 
-| Flow | Workflows (`sekmet workflow list`) | Resources |
-|---|---|---|
-| ADT / registration | register (A04), update (A08), merge (A40 via `Patient.link`), admit (A01), transfer (A02), discharge (A03), cancel (A11), outpatient visit | Patient, Encounter, Location, Organization, Practitioner, PractitionerRole |
-| Orders & results | lab order, imaging order, accept, collect specimen, lab result, imaging study, imaging report, cancel | ServiceRequest, Task, Specimen, Observation, DiagnosticReport, ImagingStudy |
-| Scheduling | create schedule + slots, find slots, book, respond, reschedule, cancel, check-in, complete | Schedule, Slot, Appointment, AppointmentResponse, Encounter |
-| Medications | prescribe, dispense, administer, stop | MedicationRequest, MedicationDispense, MedicationAdministration |
-| Clinical | condition, allergy, procedure, vital signs | Condition, AllergyIntolerance, Procedure, Observation |
-| Billing | coverage, account, charge, claim (REST or `Claim/$submit`), adjudicate | Coverage, Account, ChargeItem, Claim, ClaimResponse |
+SEKMET generates **synthetic data only**. Don't point write scenarios or load tests at production systems or at
+systems holding real patient data. Load mode refuses non-local targets unless you pass `--i-own-this-system`. See
+[SECURITY.md](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/SECURITY.md).
 
-Every workflow can run against a **target**:
+## Contributing
 
-- `local`: this server's store (the real HIS then reads or subscribes).
-- `rest:<peer>`: writes directly to the peer's FHIR API. Multi-resource steps use `transaction` Bundles with
-  `urn:uuid` references (set `use_transactions: false` for sequential creates).
-- `messaging:<peer>`: writes locally and sends a FHIR message (`Bundle.type=message`, MessageHeader with the
-  HL7 v2 trigger event: A01, O21, R01, S12…) to the peer's `$process-message`, then checks the acknowledgement.
+Issues and pull requests are welcome, especially new scenarios, workflows, and findings from real systems (without
+customer data). See [CONTRIBUTING.md](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/CONTRIBUTING.md).
 
-## The FHIR server
+## License
 
-JSON and XML (`Accept`, `Content-Type` or `_format`). Errors come back as an OperationOutcome in the requested
-format.
+[Apache-2.0](https://github.com/KaRamHelal/SEKMET_FHIR_R4_Tester/blob/main/LICENSE)
 
-- read, vread, create, update (update-as-create), JSON Patch and simple FHIRPath Patch, delete, history
-  (instance, type and system), versioning with `ETag`/`If-Match`/`If-None-Match`, `Prefer: return=…`
-- conditional create (`If-None-Exist`), conditional update and conditional delete
-- `transaction` (atomic with rollback, `urn:uuid` and conditional reference resolution, spec processing order) and `batch`
-- search: string, token, reference, date, number and uri params; modifiers `:exact :contains :text :not :missing
-  :identifier :[Type] :below`; date and number prefixes; OR (`,`) and AND (repeat); chaining
-  (`subject:Patient.identifier=`); reverse chaining (`_has`); `_id`, `_lastUpdated`, `_sort`, `_count`/paging
-  links, `_include`/`_revinclude` (plus `:iterate`), `_summary`, `_elements`. Unknown params are reported in a
-  `search.mode=outcome` entry, or rejected with `Prefer: handling=strict`.
-- compartments (`Patient/123/Observation`), `Patient/$everything`, `$validate`, `$process-message`, `Claim/$submit`
-- R4 **rest-hook Subscriptions**: peers `POST /fhir/Subscription`; SEKMET notifies on matching writes (retries, then
-  `status=error`). With a payload the default is R4's `PUT {endpoint}/{type}/{id}`; set
-  `subscriptions.notify_method: post-endpoint` to POST to the endpoint instead.
-- the generated CapabilityStatement at `/fhir/metadata` reflects exactly the above
-
-**Inbound auth** (`server_auth.types`, any combination): `none`, `basic`, static `bearer`, and `smart`.
-SMART Backend Services uses `/auth/token` with `private_key_jwt` (RS384/ES384) or a client secret, discovery at
-`/fhir/.well-known/smart-configuration`, and SMART v1 or v2 system scopes enforced per request.
-
-**Outbound auth** per peer: `none`, `basic`, `bearer`, and `smart`. `smart` signs a client assertion, discovers
-the token endpoint, caches the token, and refreshes on 401. Generate a key with `sekmet keys generate`; the public
-key is served at `/.well-known/jwks.json` so the HIS can register SEKMET by JWKS URL.
-
-## Scenarios
-
-The built-in library (`sekmet scenario list`):
-
-| id | checks |
-|---|---|
-| `conformance_smoke` | CapabilityStatement, CRUD, conditional create, If-Match 409/412, vread, history, transaction with `urn:uuid`, `_include`, paging, invalid-resource rejection, delete→410 |
-| `adt_admit_transfer_discharge` | encounter lifecycle, location history, discharge disposition, search by patient+status |
-| `adt_merge_update` | demographic update, merge links, old MRN carried over |
-| `lab_order_to_result` | SR+Task transaction, Task state machine, Observations/DiagnosticReport transaction, `based-on` and `_include` searches |
-| `lab_order_peer_fills` | SEKMET as **placer**: waits for the peer (LIS) to produce a final DiagnosticReport |
-| `rad_order_imaging_report` | ImagingStudy with DICOM UIDs, RAD report with `presentedForm`, `basedon` search |
-| `appointment_book_cancel` | slots, booking marks slot busy, reschedule, cancel, proposed→AppointmentResponse→booked, check-in, complete |
-| `medication_order_dispense` | prescribe, dispense, administer, stop; `prescription` and `status` searches |
-| `clinical_documentation` | conditions by category and clinical status, allergies, procedures, vitals incl. BP components |
-| `billing_claim` | coverage, account, charges, claim, and waits for the payer's ClaimResponse; `Claim/$submit` |
-| `subscription_roundtrip` | registers a rest-hook Subscription on the peer and verifies notifications reach `/hooks` |
-| `messaging_adt_orders` | A04/A01/O21/R01/A03 messages acknowledged `ok`; malformed message rejected |
-
-Scenario steps are `action` (a workflow), `request` (raw FHIR call), `expect` (status, headers, FHIRPath), `assert`,
-`wait_for` (a notification or a search result), `subscribe`, `set`, `sleep` and `validate`. Values interpolate
-`${saved.path}`. Steps and scenarios can declare `requires: {resource, interaction, operation, messaging}`. When the
-peer's CapabilityStatement doesn't advertise the requirement, the step is **skipped** rather than failed, which
-separates "not supported" from "broken". Put your own YAML files in `./scenarios/`; they override library entries
-with the same id. Here is an example:
-
-```yaml
-name: My HIS - admit shows in census
-steps:
-  - {action: adt.register_patient, save: reg}
-  - {action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
-  - name: Census search
-    request: {method: GET, path: Encounter, params: {status: in-progress, location: "${adm.encounter.location.0.location.reference}"}}
-    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Encounter).id contains '${adm.encounter.id}'"]}
-```
-
-Against the loopback peer the simulator is suppressed so scenarios can drive both sides deterministically.
-Scenarios that need it declare `simulator: true`.
-
-## Validation
-
-- Structural validation of every inbound write uses `fhir.resources` models (`validation.inbound: strict|warn|off`).
-  The library ships R4B models, which match R4 for all resources used here. Set `warn` if a valid R4-only construct
-  is ever rejected.
-- For IG/profile conformance, run `sekmet validator download`, then set `validation.validator_jar` and `igs`
-  (e.g. `hl7.fhir.us.core#6.1.0`). This enables `$validate`, `sekmet validate --conformance file.json`, and
-  `validate` scenario steps.
-
-## Docker
-
-```bash
-docker compose up -d                                 # SEKMET on :8090, HAPI FHIR (stand-in HIS) on :8081
-docker compose exec sekmet sekmet scenario run all --peer hapi
-```
-
-## Layout
-
-```
-sekmet/fhir/          store (SQLite + history + search index), search engine, REST router, bundles, capability, validation
-sekmet/auth/          inbound guard + SMART token endpoint, outbound auth providers, key tools
-sekmet/client/        PeerClient (FHIR REST client with traffic logging)
-sekmet/workflows/     hospital workflows, targets (local/rest/messaging), terminology catalogue, simulator
-sekmet/messaging/     message Bundle builder/sender, $process-message
-sekmet/subscriptions/ rest-hook engine, remote registration, /hooks receiver
-sekmet/scenarios/     runner, reports, built-in library
-sekmet/ui/            web console (Jinja2 + htmx)
-```
-
-`pytest` runs unit, REST, auth (including end-to-end SMART) and every library scenario over real HTTP loopback.
+<sub>Keywords: FHIR R4 test harness · HL7 FHIR integration testing · HIS / EHR interoperability testing · FHIR mock
+server · FHIR simulator · lab / radiology interface testing · FHIR Subscriptions backport · SMART Backend Services
+testing · Bulk Data $export testing · FHIR TestScript runner · FHIR load testing</sub>
