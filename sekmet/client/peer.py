@@ -124,7 +124,7 @@ class PeerClient:
                                            duration_ms=round((time.perf_counter() - start) * 1000, 1),
                                            run_id=active_run(), note=f"transport error: {e!r}")
                 raise PeerError(f"{method} {url} failed: {e!r}")
-            if r.status_code == 401 and attempt == 1 and self.peer.auth.type == "smart":
+            if r.status_code == 401 and attempt == 1 and self.peer.auth.type in ("smart", "client_credentials"):
                 self._log_raw(r, note="401 - refreshing token and retrying")
                 self.auth.invalidate()
                 continue
@@ -209,7 +209,7 @@ class PeerClient:
 
 
 def _redact_form(content: bytes | None) -> bytes | None:
-    if content and b"client_assertion=" in content:
+    if content and (b"client_assertion=" in content or b"client_secret=" in content):
         return b"&".join(p if not p.startswith((b"client_assertion=", b"client_secret=")) else
                          p.split(b"=")[0] + b"=***redacted***" for p in content.split(b"&"))
     return content

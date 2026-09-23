@@ -98,3 +98,27 @@ def test_smart_token_endpoint_rejections(smart_server):
     assert httpx.post(token_url, data={"grant_type": "password"}).status_code == 400
     conf = httpx.get(f"{s.base_url}/.well-known/smart-configuration").json()
     assert conf["token_endpoint"] == token_url
+
+
+def test_client_credentials_secret(tmp_path, monkeypatch):
+    port = free_port()
+    s = make_settings(tmp_path, port, server_auth={"types": ["smart"], "smart_clients": [
+        {"client_id": "svc", "client_secret": "s3cret", "scopes": "system/*.read"}]})
+    app, server = start_server(s)
+    try:
+        monkeypatch.setenv("TEST_SECRET", "s3cret")
+        for method in ("client_secret_basic", "client_secret_post"):
+            peer = Peer(base_url=s.base_url, auth=PeerAuth(type="client_credentials", client_id="svc",
+                                                           client_secret_env="TEST_SECRET", scope="system/*.read",
+                                                           client_auth_method=method))
+            client = PeerClient("cc", peer, app.state.ctx.store)
+            assert client.search("Patient").ok
+            assert client.auth.last_token_response["scope"] == "system/*.read"
+        rows = app.state.ctx.store.query("SELECT req_headers, req_body FROM traffic WHERE note LIKE '%client_credentials%'")
+        assert rows and all("s3cret" not in (r["req_headers"] or "") + (r["req_body"] or "") for r in rows)
+        bad = Peer(base_url=s.base_url, auth=PeerAuth(type="client_credentials", client_id="svc", client_secret="nope"))
+        from sekmet.client.peer import PeerError
+        with pytest.raises(PeerError):
+            PeerClient("bad", bad).search("Patient")
+    finally:
+        server.should_exit = True

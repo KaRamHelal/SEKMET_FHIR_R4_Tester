@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class PeerAuth(BaseModel):
-    type: Literal["none", "basic", "bearer", "smart"] = "none"
+    type: Literal["none", "basic", "bearer", "smart", "client_credentials"] = "none"
     username: str | None = None
     password: str | None = None
     token: str | None = None
@@ -22,6 +22,10 @@ class PeerAuth(BaseModel):
     token_url: str | None = None  # discovered from .well-known/smart-configuration when empty
     scope: str = "system/*.read system/*.write"
     jku: str | None = None
+    # OAuth2 client_credentials with a shared secret (e.g. Keycloak confidential client)
+    client_secret: str | None = None
+    client_secret_env: str | None = None  # read the secret from this environment variable instead
+    client_auth_method: Literal["client_secret_basic", "client_secret_post"] = "client_secret_basic"
 
 
 class PeerSubscription(BaseModel):

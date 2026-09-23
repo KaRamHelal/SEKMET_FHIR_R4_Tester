@@ -60,7 +60,7 @@ def peer_summary(ctx, name: str) -> dict:
     client = ctx.peer_client(name)
     peer = ctx.settings.peer(name)
     out: dict = {"peer": name, "base_url": peer.base_url, "auth": client.auth.describe(), "mode": peer.mode}
-    if peer.auth.type == "smart":
+    if peer.auth.type in ("smart", "client_credentials"):
         try:
             client.auth.invalidate()
             client.auth.headers()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import threading
 import time
 import uuid
@@ -135,6 +136,46 @@ class SmartBackendAuth(AuthProvider):
             self._token = None
 
 
+class ClientCredentialsAuth(SmartBackendAuth):
+    """OAuth2 client_credentials grant authenticated with a client secret (Keycloak, Azure AD, ...)."""
+
+    def __init__(self, peer: Peer, log=None):
+        a = peer.auth
+        secret = a.client_secret or (os.environ.get(a.client_secret_env) if a.client_secret_env else None)
+        if not a.client_id or not secret:
+            raise AuthError("client_credentials auth requires client_id and client_secret (or client_secret_env)")
+        self.peer, self.cfg, self.log = peer, a, log
+        self._secret = secret
+        self._token, self._exp, self._token_url = None, 0.0, a.token_url
+        self._lock = threading.Lock()
+        self.last_token_response = None
+
+    def describe(self):
+        return f"OAuth2 client_credentials ({self.cfg.client_id})"
+
+    def fetch_token(self) -> str:
+        with httpx.Client(timeout=self.peer.timeout, verify=self.peer.verify_tls) as client:
+            url = self.token_url(client)
+            data = {"grant_type": "client_credentials"}
+            if self.cfg.scope:
+                data["scope"] = self.cfg.scope
+            auth = None
+            if self.cfg.client_auth_method == "client_secret_post":
+                data.update(client_id=self.cfg.client_id, client_secret=self._secret)
+            else:
+                auth = (self.cfg.client_id, self._secret)
+            r = client.post(url, data=data, auth=auth, headers={"Accept": "application/json"})
+            if self.log:
+                self.log(r, note="OAuth2 client_credentials token request")
+        if r.status_code != 200:
+            raise AuthError(f"Token request failed: HTTP {r.status_code} {r.text[:500]}")
+        body = r.json()
+        self.last_token_response = {k: v for k, v in body.items() if k not in ("access_token", "refresh_token", "id_token")}
+        self._token = body["access_token"]
+        self._exp = time.time() + int(body.get("expires_in", 300)) - 30
+        return self._token
+
+
 def provider_for(peer: Peer, log=None) -> AuthProvider:
     a = peer.auth
     if a.type == "basic":
@@ -143,4 +184,6 @@ def provider_for(peer: Peer, log=None) -> AuthProvider:
         return BearerAuth(a.token or "")
     if a.type == "smart":
         return SmartBackendAuth(peer, log)
+    if a.type == "client_credentials":
+        return ClientCredentialsAuth(peer, log)
     return AuthProvider()
