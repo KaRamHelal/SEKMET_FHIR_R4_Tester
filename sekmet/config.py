@@ -49,6 +49,7 @@ class Peer(BaseModel):
     timeout: float = 30.0
     verify_tls: bool = True
     prefer_return: Literal["representation", "minimal", "OperationOutcome", ""] = "representation"
+    format: Literal["json", "xml"] = "json"  # wire format SEKMET uses with this peer
     # actors this peer plays beyond being a FHIR store; scenario steps needing an actor skip otherwise
     roles: list[Literal["lab-filler", "imaging-filler", "payer", "scheduler", "pharmacy"]] = Field(default_factory=list)
 

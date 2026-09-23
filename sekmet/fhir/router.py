@@ -15,29 +15,39 @@ from .bundle import process_bundle
 from .capability import capability_statement
 from .common import FHIR_JSON, R4_RESOURCE_TYPES, FhirError, issue, operation_outcome
 from .service import Result
+from .xml import FHIR_XML, from_xml, to_xml, wants_xml
 
 log = logging.getLogger("sekmet.fhir")
 JSON_TYPES = ("application/fhir+json", "application/json", "application/json-patch+json", "text/json", "json")
 XML_TYPES = ("application/fhir+xml", "application/xml", "text/xml", "xml")
 
 
-def fhir_response(status: int, body: dict | None, headers: dict[str, str] | None = None, pretty: bool = False) -> Response:
-    content = b"" if body is None else json.dumps(body, indent=2 if pretty else None,
-                                                   separators=None if pretty else (",", ":")).encode()
+def fhir_response(status: int, body: dict | None, headers: dict[str, str] | None = None, pretty: bool = False,
+                  xml: bool = False) -> Response:
     h = dict(headers or {})
-    if status == 304:
-        content = b""
-    return Response(content=content, status_code=status, headers=h,
-                    media_type=f"{FHIR_JSON}; charset=utf-8" if body is not None else None)
+    if body is None or status == 304:
+        return Response(content=b"", status_code=status, headers=h)
+    if xml:
+        try:
+            return Response(content=to_xml(body), status_code=status, headers=h,
+                            media_type=f"{FHIR_XML}; charset=utf-8")
+        except FhirError as e:  # resource cannot be expressed through the models: say so, in JSON
+            h["X-Sekmet-Format-Fallback"] = "json"
+            body = {**e.outcome()} if status < 400 else body
+            status = e.status if status < 400 else status
+    content = json.dumps(body, indent=2 if pretty else None, separators=None if pretty else (",", ":")).encode()
+    return Response(content=content, status_code=status, headers=h, media_type=f"{FHIR_JSON}; charset=utf-8")
 
 
-def _negotiate(request: Request, params: list[tuple[str, str]]) -> None:
+def _negotiate(request: Request, params: list[tuple[str, str]]) -> bool:
+    """Returns True when the response should be XML."""
     fmt = dict(params).get("_format", "")
-    if fmt and any(x in fmt for x in XML_TYPES):
-        raise FhirError(406, "XML is not supported by this server; use JSON", "not-supported")
+    if fmt and not any(x in fmt.lower() for x in (*JSON_TYPES, *XML_TYPES)):
+        raise FhirError(406, f"Unsupported _format '{fmt}' (use json or xml)", "not-supported")
     accept = request.headers.get("accept", "")
-    if accept and not any(t in accept for t in (*JSON_TYPES, "*/*")) and any(t in accept for t in XML_TYPES):
-        raise FhirError(406, "XML is not supported by this server; use application/fhir+json", "not-supported")
+    if accept and not any(t in accept for t in (*JSON_TYPES, *XML_TYPES, "*/*", "application/*")):
+        raise FhirError(406, f"Cannot produce any of: {accept}", "not-supported")
+    return wants_xml(accept, fmt)
 
 
 async def _body(request: Request) -> object:
@@ -46,7 +56,7 @@ async def _body(request: Request) -> object:
         return None
     ctype = request.headers.get("content-type", "application/fhir+json").lower()
     if any(t in ctype for t in XML_TYPES):
-        raise FhirError(415, "XML request bodies are not supported; send application/fhir+json", "not-supported")
+        return from_xml(raw)
     if "x-www-form-urlencoded" in ctype:
         return parse_qsl(raw.decode(), keep_blank_values=True)
     try:
@@ -67,11 +77,11 @@ def absolutize(body: dict, base: str) -> dict:
     return body
 
 
-def _to_response(res: Result, pretty: bool, ctx=None) -> Response:
+def _to_response(res: Result, pretty: bool, ctx=None, xml: bool = False) -> Response:
     body = res.body
     if body is not None and ctx is not None and ctx.settings.server_behaviour.absolute_references:
         body = absolutize(body, ctx.service.base_url)
-    return fhir_response(res.status, body, res.headers, pretty)
+    return fhir_response(res.status, body, res.headers, pretty, xml)
 
 
 def build_router(get_ctx) -> APIRouter:
@@ -83,27 +93,29 @@ def build_router(get_ctx) -> APIRouter:
         ctx = get_ctx()
         params = list(request.query_params.multi_items())
         pretty = dict(params).get("_pretty") == "true"
+        xml = False
         try:
-            _negotiate(request, params)
+            xml = _negotiate(request, params)
             segs = [s for s in path.split("/") if s]
             if segs == ["metadata"] and request.method in ("GET", "HEAD"):
-                return fhir_response(200, capability_statement(ctx.service), pretty=pretty)
+                return fhir_response(200, capability_statement(ctx.service), pretty=pretty, xml=xml)
             await run_in_threadpool(check_request, request, ctx)
             body = await _body(request) if request.method in ("POST", "PUT", "PATCH") else None
             res = await run_in_threadpool(dispatch, ctx, request, segs, params, body)
             if res.issues:
                 request.scope.setdefault("state", {})["traffic_note"] = "; ".join(
                     f"{i.get('severity')}: {i.get('diagnostics')}" for i in res.issues[:10])
-            return _to_response(res, pretty, ctx)
+            return _to_response(res, pretty, ctx, xml)
         except FhirError as e:
             if e.status >= 500:
                 log.error("FHIR error: %s", e.message)
             request.scope.setdefault("state", {})["traffic_note"] = e.message[:500]
-            return fhir_response(e.status, e.outcome(), e.headers, pretty)
+            return fhir_response(e.status, e.outcome(), e.headers, pretty, xml)
         except Exception as e:  # unexpected: still answer with an OperationOutcome
             log.exception("Unhandled error on %s %s", request.method, request.url.path)
             request.scope.setdefault("state", {})["traffic_note"] = traceback.format_exc()[-2000:]
-            return fhir_response(500, operation_outcome([issue("fatal", "exception", f"Internal error: {e}")]), pretty=pretty)
+            return fhir_response(500, operation_outcome([issue("fatal", "exception", f"Internal error: {e}")]),
+                                 pretty=pretty, xml=xml)
 
     return router
 

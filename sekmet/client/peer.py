@@ -12,7 +12,8 @@ import httpx
 
 from ..auth.outbound import AuthError, provider_for
 from ..config import Peer
-from ..fhir.common import FHIR_JSON, parse_reference
+from ..fhir.common import FHIR_JSON, FhirError, parse_reference
+from ..fhir.xml import FHIR_XML, from_xml, to_xml
 from ..traffic.log import active_run, body_text, redact_headers
 
 
@@ -100,12 +101,23 @@ class PeerClient:
         url = path if absolute or path.startswith(("http://", "https://")) else f"{self.base}/{path.lstrip('/')}"
         if params:
             url += ("&" if "?" in url else "?") + urlencode(params, doseq=True)
-        h = {"Accept": FHIR_JSON, "X-Request-Id": str(uuid.uuid4()), **self.peer.headers, **self.extra_headers,
-             **(headers or {})}
+        xml = self.peer.format == "xml"
+        h = {"Accept": FHIR_XML if xml else FHIR_JSON, "X-Request-Id": str(uuid.uuid4()), **self.peer.headers,
+             **self.extra_headers, **(headers or {})}
         content = raw
         if body is not None and raw is None:
-            content = json.dumps(body).encode()
-            h.setdefault("Content-Type", f"{content_type}; charset=utf-8" if "json" in content_type else content_type)
+            xml_body = None
+            if xml and content_type == FHIR_JSON and isinstance(body, dict):
+                try:
+                    xml_body = to_xml(body)
+                except FhirError:  # e.g. a deliberately invalid probe: not expressible through the models
+                    note = "; ".join(x for x in (note, "body not expressible as FHIR XML; sent as JSON") if x)
+            if xml_body is not None:
+                content = xml_body
+                h.setdefault("Content-Type", f"{FHIR_XML}; charset=utf-8")
+            else:
+                content = json.dumps(body).encode()
+                h.setdefault("Content-Type", f"{content_type}; charset=utf-8" if "json" in content_type else content_type)
         if method in ("POST", "PUT", "PATCH") and self.peer.prefer_return and "Prefer" not in h:
             h["Prefer"] = f"return={self.peer.prefer_return}"
         for attempt in (1, 2):
@@ -129,10 +141,22 @@ class PeerClient:
                 self.auth.invalidate()
                 continue
             break
-        try:
-            parsed = r.json() if r.content else None
-        except ValueError:
-            parsed = None
+        parsed, note_extra = None, None
+        ctype = r.headers.get("content-type", "").lower()
+        if r.content:
+            if "xml" in ctype and "html" not in ctype:
+                try:
+                    parsed = from_xml(r.content)
+                except FhirError as e:
+                    note_extra = f"response XML not parseable: {e.message}"
+            else:
+                try:
+                    parsed = r.json()
+                except ValueError:
+                    parsed = None
+        if xml and r.content and "json" in ctype:
+            note_extra = "asked for XML (Accept: application/fhir+xml) but the peer answered JSON"
+        note = "; ".join(x for x in (note, note_extra) if x) or None
         resp = PeerResponse(r.status_code, {k.lower(): v for k, v in r.headers.items()}, parsed, r.text,
                             round(r.elapsed.total_seconds() * 1000, 1), method, url)
         resp.traffic_id = self._log_raw(r, note=note)

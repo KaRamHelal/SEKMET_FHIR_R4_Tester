@@ -70,3 +70,26 @@ def test_backport_rejects_unknown_topic_and_bad_filter(live):
     for s, word in ((s1, "Unknown SubscriptionTopic"), (s2, "not allowed by topic")):
         cur = httpx.get(f"{base}/Subscription/{s['id']}").json()
         assert cur["status"] == "error" and word in cur.get("error", ""), cur
+
+
+@pytest.fixture(scope="module")
+def live_xml(tmp_path_factory):
+    """Loopback peer that talks FHIR XML on the wire."""
+    from .conftest import free_port, make_settings, start_server
+    tmp = tmp_path_factory.mktemp("livexml")
+    port = free_port()
+    s = make_settings(tmp, port)
+    s.peers["self"] = s.peer("self").model_copy(update={"format": "xml"})
+    app, server = start_server(s)
+    yield app.state.ctx
+    server.should_exit = True
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS)
+def test_library_scenario_passes_over_xml(live_xml, scenario):
+    result = ScenarioRunner(live_xml, "self").run(scenario)
+    failures = [f"{s.index}. {s.name}: {s.message}" for s in result.steps if s.status in ("failed", "error")]
+    assert result.status in ("passed", "warning"), "\n".join(failures)
+    xml_calls = live_xml.store.query(
+        "SELECT COUNT(*) FROM traffic WHERE direction='outbound' AND req_headers LIKE '%application/fhir+xml%'")[0][0]
+    assert xml_calls > 0

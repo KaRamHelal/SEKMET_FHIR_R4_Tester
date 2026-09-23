@@ -313,7 +313,12 @@ class ScenarioRunner:
             sr.checks.append({"check": f"status in {want}", "ok": ok, "detail": detail[:500]})
         for h, want in (exp.get("headers") or {}).items():
             got = (resp or {}).get("headers", {}).get(h.lower())
-            ok = got is not None if want == "present" else got == want
+            if want == "present":
+                ok = got is not None
+            elif isinstance(want, str) and want.startswith("~"):  # "~xml": header contains the text
+                ok = got is not None and want[1:].lower() in got.lower()
+            else:
+                ok = got == want
             sr.checks.append({"check": f"header {h} {want}", "ok": ok, "detail": str(got)})
         if exp.get("resource_type") and isinstance(body, dict):
             ok = body.get("resourceType") == exp["resource_type"]
@@ -480,6 +485,10 @@ class ScenarioRunner:
             ops |= {o.get("name", "").lstrip("$") for r in rest.get("resource", []) for o in r.get("operation", [])}
             if name not in ops and not (name == "process-message" and cs.get("messaging")):
                 return f"peer does not advertise ${name}"
+        if req.get("format"):
+            fmts = " ".join(cs.get("format", [])).lower()
+            if req["format"].lower() not in fmts:
+                return f"peer does not advertise format {req['format']}"
         if req.get("messaging") and not cs.get("messaging") and "process-message" not in {
                 o.get("name", "").lstrip("$") for o in rest.get("operation", [])}:
             return "peer does not advertise FHIR messaging"

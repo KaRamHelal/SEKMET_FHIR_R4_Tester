@@ -92,6 +92,7 @@ peer name). It reacts only to writes from outside SEKMET.
 | `roles[]` | actors the peer plays: `lab-filler imaging-filler payer scheduler pharmacy`. Steps needing an actor skip otherwise. `self` has all of them while the simulator is on. |
 | `use_transactions` | multi-resource steps as one `transaction` Bundle; `false` creates them in order and resolves `urn:uuid` client-side |
 | `prefer_return` | `Prefer: return=` sent on writes |
+| `format` | `json` (default) or `xml`: the wire format SEKMET uses with this peer (bodies and `Accept`) |
 | `headers` | extra headers on every request |
 | `subscribe[]`, `fetch_on_ping`, `mirror_notifications` | subscriptions SEKMET registers on the peer, and what it does with notifications |
 | `timeout`, `verify_tls` | HTTP settings |
@@ -102,6 +103,17 @@ peer name). It reacts only to writes from outside SEKMET.
   directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
+
+## Formats (JSON and XML)
+
+- **Server:** SEKMET accepts and returns `application/fhir+json` and `application/fhir+xml`. `_format` wins over
+  `Accept`; JSON wins when a client accepts both. Unsupported formats get 406. XML is parsed with entity
+  resolution and network access disabled (no XXE).
+- **Client:** `peers.<name>.format: xml` makes SEKMET send XML bodies and ask for XML responses. The traffic note
+  flags a peer that answers JSON anyway. Deliberately invalid probes can't be expressed as XML, so they're sent as
+  JSON, and the note says so.
+- XML goes through the R4B structure models (element order and cardinality need the definitions). R4-only elements
+  outside R4B would be rejected in XML; use JSON for those.
 
 ## Subscriptions
 

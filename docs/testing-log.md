@@ -18,6 +18,7 @@ adapted to). Only public test servers are recorded here. How to run a round: [op
 | de-duplicates identical creates | – | ✓ (412) | – | – | – |
 | classic R4 Subscriptions | ✗ (backport only) | ✓ | – | – | – |
 | topic-based (Backport) Subscriptions | ✓ (handshake, id-only, `$status`) | – | – | – | – |
+| FHIR XML both ways | – | ✓ | ✓ | ✓ | – |
 | `$process-message` | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ✓ = spec-expected behaviour, ✗ = deviation or missing, – = not observed.
@@ -103,3 +104,18 @@ SEKMET fixes and additions:
 - Receiver: handshake, heartbeat and event kinds are recorded, and `id-only` focus is fetched from the peer.
 - `requires.public_url` now only gates remote peers; a localhost peer can reach a localhost SEKMET.
 - `scenario run --var name=value` overrides scenario variables.
+
+## Round 7: FHIR XML, SEKMET vs HAPI and Firely (XML on the wire)
+Added XML to SEKMET's server and client. Results: the full library passes over XML on loopback (13/13),
+against **HAPI in XML** (13/13: 198/199 responses were XML, every body SEKMET sent was XML except the deliberately
+invalid probe) and against **Firely in XML** (13/13). Spark answers XML on request too.
+Both servers accepted SEKMET's XML and SEKMET parsed both servers' XML. That independently validates the serializer
+and parser SEKMET's own XML server uses.
+SEKMET fixes and additions:
+- Server: `application/fhir+xml` in and out, `_format`, errors as XML OperationOutcome, XXE-safe parsing, `xml` in
+  `CapabilityStatement.format`. Unknown formats still get 406.
+- Client: `peers.<name>.format: xml`, with a traffic note when a peer ignores it.
+- **Design finding:** deliberately invalid probe bodies can't be serialized to XML through the models. The client
+  sends those as JSON and records it, instead of crashing the step.
+- Conformance: a new SHOULD-level check "answers XML when asked", gated by `requires: {format: xml}`; header
+  expectations accept `~contains`.

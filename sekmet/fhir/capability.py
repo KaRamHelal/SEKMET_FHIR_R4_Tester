@@ -72,7 +72,7 @@ def capability_statement(svc) -> dict:
         "software": {"name": s.software_name, "version": "0.1.0"},
         "implementation": {"description": f"{s.facility_name} (micro HIS test harness)", "url": svc.base_url},
         "fhirVersion": FHIR_VERSION,
-        "format": ["application/fhir+json", "json"],
+        "format": ["application/fhir+json", "json", "application/fhir+xml", "xml"],
         "patchFormat": ["application/json-patch+json", "application/fhir+json"],
         "rest": [{
             "mode": "server",

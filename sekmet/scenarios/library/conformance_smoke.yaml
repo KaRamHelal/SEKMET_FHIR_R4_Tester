@@ -142,6 +142,15 @@ steps:
         - "Bundle.entry.all(search.mode.exists())"
         - "Bundle.entry.where(search.mode = 'include').resource.ofType(Patient).exists()"
 
+  - name: Answers FHIR XML when asked (Accept application/fhir+xml)
+    level: should
+    requires: {format: xml}
+    request: {method: GET, path: "Patient/${created.body.id}", headers: {Accept: application/fhir+xml}}
+    expect:
+      status: 200
+      headers: {content-type: "~xml"}
+      fhirpath: ["Patient.identifier.value = '${mrn}'"]
+
   - name: Paging returns next link
     request: {method: GET, path: Patient, params: {_count: "1"}}
     expect: {status: 200, fhirpath: ["Bundle.link.where(relation = 'next').exists()"]}

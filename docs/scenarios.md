@@ -7,7 +7,7 @@ and skip on their own.
 
 | id | Purpose | Needs | Known peer behaviour seen |
 |---|---|---|---|
-| `conformance_smoke` | Core REST: CapabilityStatement, CRUD, conditional create, If-Match 409/412, vread, history, transaction with `urn:uuid`, chained search + `_include`, paging, invalid-resource rejection (SHOULD), `search.mode` (SHOULD), delete→410 | – | candle: 500 on stale If-Match, no `next` link; HAPI/WildFHIR/candle accept unknown elements; Spark omits `search.mode` |
+| `conformance_smoke` | Core REST: CapabilityStatement, CRUD, XML on request (SHOULD), conditional create, If-Match 409/412, vread, history, transaction with `urn:uuid`, chained search + `_include`, paging, invalid-resource rejection (SHOULD), `search.mode` (SHOULD), delete→410 | – | candle: 500 on stale If-Match, no `next` link; HAPI/WildFHIR/candle accept unknown elements; Spark omits `search.mode` |
 | `adt_admit_transfer_discharge` | Register, admit, transfer (location history), discharge (disposition, `period.end`), version history | – | candle: no history |
 | `adt_merge_update` | Demographic update; merge via `Patient.link` (replaced-by / replaces), old MRN kept | – | – |
 | `lab_order_to_result` | SEKMET drives placer **and** filler: SR+Task transaction, Task states, Specimen, Observations + DiagnosticReport transaction, `based-on` / `_include` searches | – | candle leaves `urn:uuid` unresolved in `Task.basedOn[]` |
@@ -58,6 +58,8 @@ steps:
   - sleep: 1
 ```
 
+**Header expectations:** `present`, an exact value, or `~text` (header contains the text, case-insensitive).
+
 **Step options:** `name`, `save`, `expect`, `target`, `requires`, `level: should` (a failure becomes a warning),
 `continue_on_failure`, `always` (runs even after a failure).
 
@@ -69,11 +71,15 @@ steps:
 | `interaction` | must be advertised, on `resource` if given, else at system level |
 | `operation` | e.g. `submit`, `process-message` |
 | `messaging` | peer advertises FHIR messaging |
+| `format` | peer advertises that format in `CapabilityStatement.format`, e.g. `xml` |
 | `role` | peer declares that actor in `roles` |
 | `public_url` | SEKMET is reachable by the peer |
 | `mode` | peer mode must match |
 | `simulator` | simulator must be on |
 | `loopback` | peer must be `self` |
+
+**Running a whole library over XML:** point it at a peer with `format: xml`; every workflow then round-trips
+through XML.
 
 **Variables:** override any `vars:` entry on the command line with `--var name=value`. Built-ins: `${peer}`, `${peer_base}`, `${run_id}`, `${uid}` (unique per run), `${now}`, `${today}`,
 `${ids.<system>}`, `${settings.…}`, plus everything saved. A value that is exactly `${x}` keeps its type (object,

@@ -45,7 +45,9 @@ def test_validation_and_errors(client):
     assert client.get("/fhir/Patient/nope").status_code == 404
     r = client.post("/fhir/Patient", content=b"{bad json", headers={"Content-Type": "application/fhir+json"})
     assert r.status_code == 400
-    assert client.get("/fhir/Patient", headers={"Accept": "application/fhir+xml"}).status_code == 406
+    assert client.get("/fhir/Patient", headers={"Accept": "application/fhir+xml"}).status_code == 200
+    assert client.get("/fhir/Patient", headers={"Accept": "text/turtle"}).status_code == 406
+    assert client.get("/fhir/Patient", params={"_format": "ttl"}).status_code == 406
 
 
 def test_search_features(client):
@@ -195,3 +197,37 @@ def test_absolute_references_behaviour(tmp_path):
     assert c.get("/fhir/Observation", params={"subject": f"Patient/{pid}"}).json()["total"] == 1
     s = c.get("/fhir/Observation").json()
     assert s["entry"][0]["resource"]["subject"]["reference"].startswith("http://")
+
+
+XML_PAT = b"""<Patient xmlns="http://hl7.org/fhir"><identifier><system value="urn:x"/><value value="X1"/></identifier>
+<name><family value="Xml"/><given value="Ann"/></name><gender value="female"/><birthDate value="1980-02-03"/></Patient>"""
+
+
+def test_xml_create_read_search_and_errors(client):
+    from lxml import etree
+    r = client.post("/fhir/Patient", content=XML_PAT, headers={"Content-Type": "application/fhir+xml",
+                                                                "Accept": "application/fhir+xml"})
+    assert r.status_code == 201 and r.headers["content-type"].startswith("application/fhir+xml")
+    root = etree.fromstring(r.content)
+    pid = root.find("{http://hl7.org/fhir}id").get("value")
+    # JSON view of the same resource
+    assert client.get(f"/fhir/Patient/{pid}").json()["name"][0]["family"] == "Xml"
+    # _format wins over Accept
+    r = client.get(f"/fhir/Patient/{pid}", params={"_format": "xml"})
+    assert r.headers["content-type"].startswith("application/fhir+xml") and b"<family value=\"Xml\"/>" in r.content
+    r = client.get("/fhir/Patient", params={"family": "xml"}, headers={"Accept": "application/fhir+xml"})
+    assert b"<Bundle" in r.content and b'<total value="1"/>' in r.content
+    # errors come back as XML OperationOutcome when XML was asked for
+    r = client.get("/fhir/Patient/nope", headers={"Accept": "application/fhir+xml"})
+    assert r.status_code == 404 and b"<OperationOutcome" in r.content
+    r = client.post("/fhir/Patient", content=b"<Patient xmlns='http://hl7.org/fhir'><bogus/></Patient>",
+                    headers={"Content-Type": "application/fhir+xml"})
+    assert r.status_code == 400
+    r = client.post("/fhir/Patient", content=b"<not-xml", headers={"Content-Type": "application/fhir+xml"})
+    assert r.status_code == 400
+    # XXE is not resolved
+    xxe = b'<?xml version="1.0"?><!DOCTYPE p [<!ENTITY x SYSTEM "file:///etc/passwd">]>' \
+          b'<Patient xmlns="http://hl7.org/fhir"><name><family value="&x;"/></name></Patient>'
+    r = client.post("/fhir/Patient", content=xxe, headers={"Content-Type": "application/fhir+xml"})
+    assert b"root:" not in r.content
+    assert "xml" in client.get("/fhir/metadata").json()["format"]

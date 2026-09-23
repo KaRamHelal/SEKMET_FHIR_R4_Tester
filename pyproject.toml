@@ -21,6 +21,7 @@ dependencies = [
   "pyyaml>=6",
   "faker>=25",
   "jsonpatch>=1.33",
+  "lxml>=5",
   "pydantic>=2.7",
 ]
 

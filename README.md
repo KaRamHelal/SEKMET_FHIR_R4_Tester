@@ -63,7 +63,8 @@ Every workflow can run against a **target**:
 
 ## The FHIR server
 
-JSON only. XML gets a 406 or 415 with an explanatory OperationOutcome.
+JSON and XML (`Accept`, `Content-Type` or `_format`). Errors come back as an OperationOutcome in the requested
+format.
 
 - read, vread, create, update (update-as-create), JSON Patch and simple FHIRPath Patch, delete, history
   (instance, type and system), versioning with `ETag`/`If-Match`/`If-None-Match`, `Prefer: return=…`
