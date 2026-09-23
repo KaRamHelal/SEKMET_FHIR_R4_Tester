@@ -119,3 +119,24 @@ SEKMET fixes and additions:
   sends those as JSON and records it, instead of crashing the step.
 - Conformance: a new SHOULD-level check "answers XML when asked", gated by `requires: {format: xml}`; header
   expectations accept `~contains`.
+
+## Round 8: FHIR TestScript engine: official R4 examples, HAPI, export/replay
+Built a TestScript executor, TestReport output and run export in SEKMET, then tested:
+- **Official R4 TestScript examples** (6) on SEKMET's own server: 5/6 pass. The remaining one is **R004 in
+  `testscript-example-readtest`, which is stale**: it expects 400 for the id `ID-may-not-contain-CAPITALS`, but R4
+  ids allow capitals, so 404 is correct. Preconditions the examples assume: a known `Patient/example` on the
+  server, and a `Patient/pat1` fixture that the R4 spec doesn't publish (any Patient works).
+- **Same scripts on HAPI public:** SEKMET executed everything, including XML accept, XPath asserts, header
+  variables and multi-destination. The failures were environment ones: DELETE of the shared `Patient/example` → 409
+  (referenced by others); fixture referencing `Organization/1` → 400 (HAPI enforces referential integrity);
+  plus the stale R004.
+- **Export → replay:** `lab_order_to_result` recorded, exported (38 operations, 18 id variables) and replayed on a
+  fresh SEKMET: passes. The same flow recorded on HAPI replays on HAPI until a byte-identical create hits HAPI's
+  de-duplication (412).
+SEKMET fixes found while testing:
+- XPath variable paths without the `fhir:` prefix (`Patient/id`) are normalized.
+- Export: PUT fixtures kept real ids, so the replay sent no body (fixed). `${var}` in `resource.id` made exported
+  scripts invalid FHIR; transaction PUT entries now drop `resource.id` (the parameterized `request.url` carries it).
+  Conditional headers (`If-None-Exist`, `If-Match`…) are exported, and conditional creates accept 200 or 201.
+- `<Type>.id` variables fall back to the `Location` header when a server answers with an empty body (HAPI
+  conditional-create hit).

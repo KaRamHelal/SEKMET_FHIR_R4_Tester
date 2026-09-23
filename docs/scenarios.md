@@ -23,6 +23,9 @@ and skip on their own.
 
 Per-server results and what they changed in SEKMET are in [testing-log.md](testing-log.md).
 
+Besides YAML scenarios, SEKMET runs standard **FHIR TestScript** resources and exports any run as one. See
+[operations.md → FHIR TestScript](operations.md#fhir-testscript).
+
 ## Writing scenarios
 
 Put YAML files in `./scenarios/`. A file with the same id as a library scenario overrides it.

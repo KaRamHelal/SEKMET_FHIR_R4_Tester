@@ -20,8 +20,9 @@ wf_app = typer.Typer(help="Run individual hospital workflows", no_args_is_help=T
 keys_app = typer.Typer(help="SMART Backend Services keys", no_args_is_help=True)
 validator_app = typer.Typer(help="HL7 FHIR validator integration", no_args_is_help=True)
 subs_app = typer.Typer(help="Subscriptions on peers", no_args_is_help=True)
+ts_app = typer.Typer(help="Run FHIR TestScripts, export runs as TestScripts", no_args_is_help=True)
 for sub, name in ((scenario_app, "scenario"), (peers_app, "peers"), (wf_app, "workflow"), (keys_app, "keys"),
-                  (validator_app, "validator"), (subs_app, "subscriptions")):
+                  (validator_app, "validator"), (subs_app, "subscriptions"), (ts_app, "testscript")):
     app.add_typer(sub, name=name)
 
 ConfigOpt = typer.Option(None, "--config", "-c", help="settings.yaml path (default: $SEKMET_CONFIG or ./settings.yaml)")
@@ -135,6 +136,85 @@ def scenario_run(names: list[str] = typer.Argument(..., help="scenario ids/paths
     if server:
         server.should_exit = True
     raise typer.Exit(0 if passed == len(results) else 1)
+
+
+def _print_result(r) -> None:
+    for s in r.steps:
+        color = {"passed": "green", "warning": "yellow", "failed": "red", "error": "red", "skipped": "blue"}[s.status]
+        typer.secho(f"  {s.status.upper():<7}", fg=color, nl=False)
+        typer.echo(f" {s.index:>2}. {s.name[:110]}")
+        if s.status in ("failed", "error", "warning") and s.message:
+            typer.secho(f"           {s.message[:800]}", fg="red" if s.status in ("failed", "error") else "yellow")
+    typer.secho(f"  => {r.status.upper()} in {r.duration_ms / 1000:.1f}s  run={r.run_id}",
+                fg="green" if r.status == "passed" else "yellow" if r.status == "warning" else "red")
+
+
+@ts_app.command("run")
+def testscript_run(files: list[str] = typer.Argument(..., help="TestScript files (.json/.xml) or directories"),
+                   peer: list[str] = typer.Option(["self"], "--peer", "-p",
+                                                  help="peer per TestScript destination (repeat for multi-system)"),
+                   fixtures: list[str] = typer.Option([], "--fixtures", "-f", help="directories with fixture files"),
+                   fixture_base: str = typer.Option("https://hl7.org/fhir/R4",
+                                                    help="URL base for Type/id fixtures ('' to disable downloads)"),
+                   var: list[str] = typer.Option([], "--var", help="variable override name=value"),
+                   report_dir: str = typer.Option("reports"), config: Optional[str] = ConfigOpt):
+    """Execute FHIR TestScripts; writes the usual reports plus one TestReport per script."""
+    from .scenarios.report import write_reports
+    from .scenarios.testscript import TestScriptRunner, build_test_report, load_testscript
+    settings = load_settings(config)
+    server = None
+    if "self" in peer and not _server_up(settings.base_url):
+        ctx, server = _embedded_server(config)
+    else:
+        ctx = _ctx(config)
+    paths: list[Path] = []
+    for f in files:
+        p = Path(f)
+        paths += sorted(x for x in p.iterdir() if x.suffix in (".json", ".xml")) if p.is_dir() else [p]
+    fx_dirs = [*fixtures, *{str(p.parent) for p in paths}]
+    runner = TestScriptRunner(ctx, peer, fx_dirs, fixture_base or None, dict(v.split("=", 1) for v in var))
+    results, reports = [], []
+    for p in paths:
+        try:
+            ts = load_testscript(p)
+        except (ValueError, json.JSONDecodeError) as e:
+            typer.secho(f"skip {p}: {e}", fg="yellow")
+            continue
+        typer.secho(f"\n▶ {p.name}: {ts.get('title') or ts.get('name')}  (peers: {', '.join(peer)})", bold=True)
+        r = runner.run(ts)
+        _print_result(r)
+        results.append(r.to_dict())
+        reports.append((p.stem, build_test_report(r, ts.get("url"))))
+    out = Path(report_dir) / f"{time.strftime('%Y%m%d-%H%M%S')}-testscript-{'-'.join(peer)}"
+    written = write_reports(results, out)
+    for stem, rep in reports:
+        (out / f"TestReport-{stem}.json").write_text(json.dumps(rep, indent=2))
+    ok = sum(r["status"] in ("passed", "warning") for r in results)
+    typer.secho(f"\n{ok}/{len(results)} TestScripts passed. Reports + TestReports: {written['html'].rsplit('/', 1)[0]}",
+                bold=True)
+    if server:
+        server.should_exit = True
+    raise typer.Exit(0 if ok == len(results) else 1)
+
+
+@ts_app.command("export")
+def testscript_export(run_id: str, out: Optional[str] = None, config: Optional[str] = ConfigOpt):
+    """Export a recorded scenario run as a replayable TestScript (requests + response-code asserts)."""
+    from .scenarios.runner import load_run
+    from .scenarios.testscript import export_run
+    ctx = _ctx(config)
+    run = load_run(ctx.store, run_id)
+    if not run:
+        typer.secho(f"No run {run_id}", fg="red")
+        raise typer.Exit(1)
+    peer_base = ctx.settings.peer(run["peer"].split(",")[0]).base_url
+    ts = export_run(ctx, run, peer_base)
+    target = Path(out or f"reports/TestScript-{run_id}.json")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(ts, indent=2))
+    n_ops = sum("operation" in a for a in ts["test"][0]["action"])
+    typer.echo(f"Wrote {target}: {n_ops} operations, {len(ts['variable']) - 1} id variables, "
+               f"{len(ts['contained'])} fixtures")
 
 
 @peers_app.command("list")

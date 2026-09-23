@@ -26,6 +26,8 @@ Settings are read from `$SEKMET_CONFIG`, else `./settings.yaml`. Env overrides: 
 | `sekmet workflow list` / `workflow run <key> -t <target> -a k=v` | a single hospital workflow step |
 | `sekmet seed --count N -t <target>` | master data + N patients (every other one admitted) |
 | `sekmet subscriptions register <peer>` | creates the `peers.<peer>.subscribe` Subscriptions on the peer |
+| `sekmet testscript run <files\|dirs> -p <peer> [-p <peer2>] [-f fixtures/] [--var k=v]` | executes FHIR TestScripts (JSON or XML); writes reports plus one `TestReport-*.json` per script |
+| `sekmet testscript export <run id> [--out f.json]` | turns a recorded run into a replayable TestScript (requests, fixtures, id variables, response-code asserts) |
 | `sekmet scenario run … --var name=value` | overrides a scenario variable (e.g. another peer's topic canonical) |
 | `sekmet keys generate` | key pair for SMART Backend Services; public JWKS at `/.well-known/jwks.json` |
 | `sekmet validate file.json [--conformance]` | structural validation (+ HL7 validator jar) |
@@ -103,6 +105,27 @@ peer name). It reacts only to writes from outside SEKMET.
   directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
+
+## FHIR TestScript
+
+- **Run:** `sekmet testscript run scripts/ -p hapi -f fixtures/`. Fixtures resolve from `#contained`, fixture
+  directories (`Type/id` → `type-id.json|xml`), the script's own directory, or `--fixture-base` (default
+  `https://hl7.org/fhir/R4`; pass `""` to stay offline). Multi-system scripts map `destination` n to the n-th `-p`.
+  Manual-input variables (`hint`) come from `--var`.
+- **Supported:** operation types read, vread, create, update(Create), delete, search, history, transaction/batch,
+  patch, capabilities, validate, or explicit `method`/`url`. Per-operation `accept`/`contentType` json|xml,
+  `requestHeader`, `targetId`, `sourceId`, `responseId`, autocreate/autodelete. Asserts: response, responseCode,
+  resource, contentType, headerField, FHIRPath `expression`, XPath `path` (evaluated on the XML rendering),
+  compareToSource*, value + all operators, minimumId, navigationLinks, validateProfileId (structural), requestURL,
+  requestMethod, warningOnly (→ `warning`). A failed setup skips the tests; teardown always runs.
+- **TestReport:** each run also writes a FHIR `TestReport` (setup, tests, teardown with pass/fail/warning/skip).
+- **Export and replay:** `sekmet testscript export <run id>` records a run as a TestScript. Bodies become contained
+  fixtures, server-assigned ids become variables (from the create response, or its `Location` when the body is
+  empty), and conditional headers are kept. Replays pass on a fresh server. Replaying on the **same**
+  content-deduplicating server (e.g. HAPI) hits 412 on byte-identical creates; use a clean server or tenant.
+- **Environment preconditions** are not SEKMET failures. Examples: a script that reads a "known" `Patient/example`
+  needs it on the server first; fixtures that reference `Organization/1` fail on servers enforcing referential
+  integrity; shared public servers may refuse deletes of referenced resources (409).
 
 ## Formats (JSON and XML)
 
