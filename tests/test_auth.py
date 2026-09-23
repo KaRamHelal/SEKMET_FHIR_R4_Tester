@@ -116,6 +116,11 @@ def test_client_credentials_secret(tmp_path, monkeypatch):
             assert client.auth.last_token_response["scope"] == "system/*.read"
         rows = app.state.ctx.store.query("SELECT req_headers, req_body FROM traffic WHERE note LIKE '%client_credentials%'")
         assert rows and all("s3cret" not in (r["req_headers"] or "") + (r["req_body"] or "") for r in rows)
+        secret_file = tmp_path / "svc.secret"
+        secret_file.write_text("s3cret\n")
+        peer = Peer(base_url=s.base_url, auth=PeerAuth(type="client_credentials", client_id="svc",
+                                                       client_secret_file=str(secret_file), scope="system/*.read"))
+        assert PeerClient("file", peer).search("Patient").ok
         bad = Peer(base_url=s.base_url, auth=PeerAuth(type="client_credentials", client_id="svc", client_secret="nope"))
         from sekmet.client.peer import PeerError
         with pytest.raises(PeerError):

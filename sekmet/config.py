@@ -25,6 +25,7 @@ class PeerAuth(BaseModel):
     # OAuth2 client_credentials with a shared secret (e.g. Keycloak confidential client)
     client_secret: str | None = None
     client_secret_env: str | None = None  # read the secret from this environment variable instead
+    client_secret_file: str | None = None  # ... or from this file (first line), e.g. keys/<peer>.secret
     client_auth_method: Literal["client_secret_basic", "client_secret_post"] = "client_secret_basic"
 
 

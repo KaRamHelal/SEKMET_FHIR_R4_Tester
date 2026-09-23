@@ -142,8 +142,12 @@ class ClientCredentialsAuth(SmartBackendAuth):
     def __init__(self, peer: Peer, log=None):
         a = peer.auth
         secret = a.client_secret or (os.environ.get(a.client_secret_env) if a.client_secret_env else None)
+        if not secret and a.client_secret_file and os.path.exists(a.client_secret_file):
+            with open(a.client_secret_file) as f:
+                secret = f.readline().strip()
         if not a.client_id or not secret:
-            raise AuthError("client_credentials auth requires client_id and client_secret (or client_secret_env)")
+            raise AuthError("client_credentials auth requires client_id and a secret "
+                            "(client_secret, client_secret_env or client_secret_file)")
         self.peer, self.cfg, self.log = peer, a, log
         self._secret = secret
         self._token, self._exp, self._token_url = None, 0.0, a.token_url
