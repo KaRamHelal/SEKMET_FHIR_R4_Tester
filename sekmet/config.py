@@ -112,6 +112,11 @@ class SubscriptionSettings(BaseModel):
     hook_token: str | None = None  # bearer token peers send on rest-hook notifications; generated + persisted if empty
 
 
+class ServerBehaviour(BaseModel):
+    """Spec-allowed variations SEKMET's server can exhibit, to test how a HIS client copes with them."""
+    absolute_references: bool = False  # answer with absolute literal references (as e.g. Firely does)
+
+
 class Settings(BaseModel):
     base_url: str = "http://localhost:8090/fhir"
     host: str = "0.0.0.0"
@@ -126,6 +131,7 @@ class Settings(BaseModel):
     identifiers: Identifiers = Field(default_factory=Identifiers)
     simulator: SimulatorSettings = Field(default_factory=SimulatorSettings)
     subscriptions: SubscriptionSettings = Field(default_factory=SubscriptionSettings)
+    server_behaviour: ServerBehaviour = Field(default_factory=ServerBehaviour)
     own_private_key_path: str = "keys/sekmet_private.pem"
     peers: dict[str, Peer] = Field(default_factory=dict)
     max_body_log: int = 2_000_000

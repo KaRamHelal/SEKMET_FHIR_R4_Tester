@@ -55,8 +55,23 @@ async def _body(request: Request) -> object:
         raise FhirError(400, f"Request body is not valid JSON: {e}", "structure")
 
 
-def _to_response(res: Result, pretty: bool) -> Response:
-    return fhir_response(res.status, res.body, res.headers, pretty)
+def absolutize(body: dict, base: str) -> dict:
+    """Rewrite relative literal references (Type/id) to absolute ones on the way out."""
+    import copy
+    from .common import parse_reference, walk_references
+    body = copy.deepcopy(body)
+    for r in walk_references(body):
+        v = r["reference"]
+        if not v.startswith(("http://", "https://", "urn:", "#")) and parse_reference(v)[0]:
+            r["reference"] = f"{base}/{v}"
+    return body
+
+
+def _to_response(res: Result, pretty: bool, ctx=None) -> Response:
+    body = res.body
+    if body is not None and ctx is not None and ctx.settings.server_behaviour.absolute_references:
+        body = absolutize(body, ctx.service.base_url)
+    return fhir_response(res.status, body, res.headers, pretty)
 
 
 def build_router(get_ctx) -> APIRouter:
@@ -79,7 +94,7 @@ def build_router(get_ctx) -> APIRouter:
             if res.issues:
                 request.scope.setdefault("state", {})["traffic_note"] = "; ".join(
                     f"{i.get('severity')}: {i.get('diagnostics')}" for i in res.issues[:10])
-            return _to_response(res, pretty)
+            return _to_response(res, pretty, ctx)
         except FhirError as e:
             if e.status >= 500:
                 log.error("FHIR error: %s", e.message)

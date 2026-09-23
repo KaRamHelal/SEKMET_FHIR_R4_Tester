@@ -6,7 +6,7 @@ import copy
 import random
 import uuid
 
-from ..fhir.common import codeable, instant, ref
+from ..fhir.common import codeable, instant, ref, same_ref
 from . import catalog as C
 from .registry import Param, WF, workflow
 from .target import Tx, WorkflowError
@@ -175,7 +175,7 @@ def lab_result(wf: WF, service_request, status="final", abnormal_rate=0.2):
         raise WorkflowError(f"ServiceRequest code {code} is not a known lab test ({', '.join(C.LAB_TESTS)})")
     display, members = C.LAB_TESTS[code]
     specimens = wf.t.search("Specimen", [("subject", sr["subject"]["reference"])])
-    specimen = next((s for s in specimens if any(r.get("reference") == f"ServiceRequest/{sr['id']}"
+    specimen = next((s for s in specimens if any(same_ref(r, "ServiceRequest", sr["id"])
                                                  for r in s.get("request", []))), None)
     now = instant()
     tx = Tx()

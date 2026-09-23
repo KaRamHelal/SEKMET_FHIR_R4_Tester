@@ -180,3 +180,18 @@ def test_ui_pages_render(client):
     assert client.get(f"/ui/resources/Patient/{pid}").status_code == 200
     r = client.post("/ui/workflows/adt.register_patient", data={"_target": "local"})
     assert r.status_code == 200 and "Done" in r.text
+
+
+def test_absolute_references_behaviour(tmp_path):
+    from fastapi.testclient import TestClient
+    from sekmet.main import create_app
+    from .conftest import make_settings
+    c = TestClient(create_app(make_settings(tmp_path, server_behaviour={"absolute_references": True})))
+    pid = c.post("/fhir/Patient", json=PAT).json()["id"]
+    obs = {"resourceType": "Observation", "status": "final", "code": {"text": "x"}, "subject": {"reference": f"Patient/{pid}"}}
+    r = c.post("/fhir/Observation", json=obs).json()
+    assert r["subject"]["reference"] == f"http://127.0.0.1:8099/fhir/Patient/{pid}"
+    # stored form stays relative, so search and inbound references keep working
+    assert c.get("/fhir/Observation", params={"subject": f"Patient/{pid}"}).json()["total"] == 1
+    s = c.get("/fhir/Observation").json()
+    assert s["entry"][0]["resource"]["subject"]["reference"].startswith("http://")

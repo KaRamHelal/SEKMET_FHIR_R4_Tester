@@ -35,3 +35,17 @@ def test_logical_reference_indexed_for_identifier_modifier():
          "subject": {"identifier": {"system": "urn:mrn", "value": "123"}}}
     rows = [r for r in extract(o) if r.param == "subject"]
     assert rows and rows[0].sys == "urn:mrn" and rows[0].code == "123" and rows[0].rid is None
+
+
+def test_reference_helpers_accept_absolute_and_versioned_forms():
+    from sekmet.fhir.common import ref_type, same_ref
+    from sekmet.workflows.scheduling import _actor
+    for r in ("Patient/p1", "https://server.fire.ly/r4/Patient/p1", "http://x/fhir/Patient/p1/_history/3"):
+        assert ref_type({"reference": r}) == "Patient"
+        assert same_ref({"reference": r}, "Patient", "p1")
+    assert not same_ref({"reference": "Patient/p2"}, "Patient", "p1")
+    assert ref_type({"display": "no literal"}) is None
+    appt = {"id": "a", "participant": [{"actor": {"reference": "https://s/r4/Practitioner/d"}},
+                                       {"actor": {"reference": "https://s/r4/Patient/p"}}]}
+    assert _actor(appt, "Patient")["reference"].endswith("Patient/p")
+    assert _actor(appt, "Location", required=False) is None

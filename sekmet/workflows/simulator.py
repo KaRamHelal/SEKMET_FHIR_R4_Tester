@@ -6,7 +6,7 @@ import copy
 import logging
 import threading
 
-from ..fhir.common import FhirError, instant, parse_reference, walk_references
+from ..fhir.common import FhirError, instant, parse_reference, ref_type, walk_references
 from ..fhir.service import Result
 from ..fhir.store import WriteEvent
 from . import billing, orders, scheduling, clinical
@@ -148,7 +148,7 @@ class Simulator:
         if dry:
             return f"Appointment/{appt['id']}/v{appt.get('meta', {}).get('versionId')}"
         wf = self.wf()
-        has_prac = any(p.get("actor", {}).get("reference", "").startswith("Practitioner/")
+        has_prac = any(ref_type(p.get("actor")) == "Practitioner"
                        for p in appt.get("participant", []))
         if has_prac:
             out = scheduling.respond(wf, appt["id"], "accepted")

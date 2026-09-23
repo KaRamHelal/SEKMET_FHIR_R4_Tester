@@ -4,12 +4,19 @@ from __future__ import annotations
 import copy
 from datetime import datetime, time as dtime, timedelta, timezone
 
-from ..fhir.common import codeable, instant, parse_reference, ref
+from ..fhir.common import codeable, instant, parse_reference, ref, ref_type
 from . import catalog as C
 from .registry import PRACTITIONERS, Param, WF, workflow
 from .target import Tx, WorkflowError
 
 SERVICE_TYPES = {"124": "General Practice", "57": "Immunization", "165": "Radiology", "221": "Surgery - General"}
+
+
+def _actor(appt: dict, rtype: str, required: bool = True) -> dict | None:
+    actor = next((p["actor"] for p in appt.get("participant", []) if ref_type(p.get("actor")) == rtype), None)
+    if actor is None and required:
+        raise WorkflowError(f"Appointment/{appt.get('id')} has no {rtype} participant")
+    return actor
 
 
 def _iso(dt: datetime) -> str:
@@ -151,7 +158,7 @@ def book(wf: WF, patient, slot=None, reason="Follow-up visit", status="booked"):
 def respond(wf: WF, appointment, participant_status="accepted"):
     a = copy.deepcopy(wf.get("Appointment", appointment))
     actor = next((p["actor"] for p in a.get("participant", [])
-                  if p.get("actor", {}).get("reference", "").startswith("Practitioner/")), None)
+                  if ref_type(p.get("actor")) == "Practitioner"), None)
     if not actor:
         raise WorkflowError("Appointment has no practitioner participant")
     resp = wf.t.create({"resourceType": "AppointmentResponse", "appointment": ref(a), "actor": actor,
@@ -199,7 +206,7 @@ def cancel(wf: WF, appointment, reason="Patient request"):
 ])
 def reschedule(wf: WF, appointment, slot=None):
     old = wf.get("Appointment", appointment)
-    patient = next(p["actor"] for p in old["participant"] if p["actor"].get("reference", "").startswith("Patient/"))
+    patient = _actor(old, "Patient")
     cancel(wf, old, "Rescheduled")
     new = book(wf, patient, slot, (old.get("reasonCode") or [{}])[0].get("text", "Rescheduled visit"))
     wf.events[-1] = "appointment-reschedule"
@@ -215,12 +222,11 @@ def check_in(wf: WF, appointment):
         raise WorkflowError(f"Only booked appointments can be checked in (status={a.get('status')})")
     a["status"] = "arrived"
     for p in a["participant"]:
-        if p["actor"].get("reference", "").startswith("Patient/"):
+        if ref_type(p.get("actor")) == "Patient":
             p["status"] = "accepted"
     a = wf.t.update(a)
-    patient = next(p["actor"] for p in a["participant"] if p["actor"].get("reference", "").startswith("Patient/"))
-    prac = next((p["actor"] for p in a["participant"] if p["actor"].get("reference", "").startswith("Practitioner/")),
-                None)
+    patient = _actor(a, "Patient")
+    prac = _actor(a, "Practitioner", required=False)
     enc = {
         "resourceType": "Encounter",
         "identifier": [wf.ident(wf.ids.visit, wf.number("V"), "VN")],

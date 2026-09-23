@@ -26,3 +26,15 @@ SEKMET fixes:
   SEKMET, rather than making it call its own localhost.
 - **Unique payloads:** every probe body carries `${uid}`, because content-deduplicating servers otherwise answer
   a different question (412 duplicate) than the one being tested.
+
+## Round 2: Firely Server public, 6.9.1 (server.fire.ly/r4)
+Result: 11/12 on first run, 12/12 after the fix (payer, lab-filler, messaging and callback steps skipped by design).
+Peer behaviour: answers with **absolute literal references** (`https://server.fire.ly/r4/Patient/…`), which
+FHIR allows.
+SEKMET fixes:
+- **Bug:** scheduling workflows found participants with `reference.startswith("Patient/")` and crashed
+  (`StopIteration`) on absolute references. Every reference check now uses `ref_type()` / `same_ref()`, which
+  parse the relative, absolute and `_history` forms. Regression test added.
+- **New server behaviour:** `server_behaviour.absolute_references: true` makes SEKMET's own server answer with
+  absolute references (storage stays relative). A HIS client can then be tested against this allowed variation,
+  and the whole library passes on loopback with it on.

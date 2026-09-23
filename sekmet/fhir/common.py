@@ -124,6 +124,19 @@ def parse_reference(value: str, base_url: str | None = None) -> tuple[str | None
     return m.group("type"), m.group("id"), m.group("vid")
 
 
+def ref_type(reference: dict | str | None) -> str | None:
+    """Resource type of a literal reference, whether relative, absolute or versioned."""
+    r = reference.get("reference") if isinstance(reference, dict) else reference
+    return parse_reference(r)[0] if r else None
+
+
+def same_ref(reference: dict | str | None, rtype: str, rid: str) -> bool:
+    """True if the reference points at rtype/rid (servers may answer with absolute URLs)."""
+    r = reference.get("reference") if isinstance(reference, dict) else reference
+    t, i, _ = parse_reference(r) if r else (None, None, None)
+    return t == rtype and i == rid
+
+
 def walk_references(node: Any) -> Iterator[dict]:
     """Yield every dict with a string 'reference' key (Reference datatypes) in a resource tree."""
     if isinstance(node, dict):
