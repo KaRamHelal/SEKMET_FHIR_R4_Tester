@@ -138,6 +138,7 @@ class Settings(BaseModel):
     own_private_key_path: str = "keys/sekmet_private.pem"
     peers: dict[str, Peer] = Field(default_factory=dict)
     max_body_log: int = 2_000_000
+    log_inbound: bool = True  # record every inbound request/response in the traffic log (off for heavy load runs)
 
     @property
     def root_url(self) -> str:

@@ -57,6 +57,8 @@ class TrafficMiddleware:
         if scope["type"] != "http" or not scope["path"].startswith(LOGGED_PREFIXES):
             return await self.app(scope, receive, send)
         ctx = self.get_ctx()
+        if not ctx.settings.log_inbound and not scope["path"].startswith("/hooks"):
+            return await self.app(scope, receive, send)
         start = time.perf_counter()
         req_chunks: list[bytes] = []
         resp: dict[str, Any] = {"status": None, "headers": [], "body": []}

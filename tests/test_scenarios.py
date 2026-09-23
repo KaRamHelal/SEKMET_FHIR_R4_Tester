@@ -93,3 +93,33 @@ def test_library_scenario_passes_over_xml(live_xml, scenario):
     xml_calls = live_xml.store.query(
         "SELECT COUNT(*) FROM traffic WHERE direction='outbound' AND req_headers LIKE '%application/fhir+xml%'")[0][0]
     assert xml_calls > 0
+
+
+def test_concurrent_create_then_read_is_consistent(live):
+    """Regression: unlocked reads on the shared sqlite connection gave 404s / 500s under parallel load."""
+    import concurrent.futures
+    import httpx
+    base = live.settings.base_url
+
+    def one(i):
+        with httpx.Client(timeout=30) as c:
+            r = c.post(f"{base}/Patient", json={"resourceType": "Patient", "name": [{"family": f"Conc{i}"}]})
+            assert r.status_code == 201, r.text
+            pid = r.json()["id"]
+            r2 = c.get(f"{base}/Patient/{pid}")
+            r3 = c.get(f"{base}/Patient", params={"_id": pid})
+            return r2.status_code, r3.json().get("total")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        results = list(ex.map(one, range(120)))
+    assert all(s == 200 and t == 1 for s, t in results), [r for r in results if r != (200, 1)][:5]
+
+
+def test_load_runner_small(live):
+    from sekmet.load.runner import LoadConfig, LoadRunner, endpoint_template
+    assert endpoint_template("GET", "http://h/fhir/Patient/1/_history/2", "http://h/fhir") == "GET Patient/{id}/_history/{vid}"
+    assert endpoint_template("GET", "http://h/fhir/Encounter?patient=x", "http://h/fhir") == "GET Encounter?search"
+    assert endpoint_template("POST", "http://h/fhir/Claim/$submit", "http://h/fhir") == "POST Claim/$submit"
+    s = LoadRunner(live, LoadConfig("adt_merge_update", "self", users=4, duration_s=30, iterations=12)).run()
+    assert s["iterations"] == 12 and s["iteration_failure_rate_pct"] == 0, s["failures"]
+    assert s["server_error_rate_pct"] == 0 and s["requests"] > 0 and s["endpoints"][0]["p95"] > 0

@@ -165,7 +165,9 @@ class ScenarioRunner:
             return f"{name}:{self.peer}"
         return name
 
-    def run(self, ref: str | dict, vars_: dict | None = None) -> ScenarioResult:
+    def run(self, ref: str | dict, vars_: dict | None = None, record: bool = True) -> ScenarioResult:
+        """record=False (load mode): no process-global run tagging, traffic bookkeeping, loopback header toggling
+        or persistence, so many runs can execute concurrently."""
         if isinstance(ref, dict):
             spec, path = _yaml_keys(ref), "<inline>"
         else:
@@ -184,8 +186,9 @@ class ScenarioRunner:
         default_target = spec.get("target", "peer")
         requires = spec.get("requires", {})
         start = time.perf_counter()
-        set_active_run(run_id)
-        loopback = self.ctx.peer_client("self") if self.peer == "self" else None
+        if record:
+            set_active_run(run_id)
+        loopback = self.ctx.peer_client("self") if self.peer == "self" and record else None
         if loopback is not None and not spec.get("simulator", False):
             loopback.extra_headers["X-Sekmet-Simulate"] = "off"
         try:
@@ -201,7 +204,7 @@ class ScenarioRunner:
                     result.steps.append(sr)
                     continue
                 t0 = time.perf_counter()
-                tmark = self._max_traffic()
+                tmark = self._max_traffic() if record else 0
                 try:
                     self._step(step, kind, v, state, default_target, sr)
                 except StepFailed as e:
@@ -213,14 +216,15 @@ class ScenarioRunner:
                     if not isinstance(e, (KeyError, ValueError)):
                         sr.message += "\n" + traceback.format_exc(limit=3)
                 sr.duration_ms = round((time.perf_counter() - t0) * 1000, 1)
-                sr.traffic_ids = self._traffic_since(tmark, run_id)
+                sr.traffic_ids = self._traffic_since(tmark, run_id) if record else []
                 result.steps.append(sr)
                 if sr.status in ("failed", "error") and not step.get("continue_on_failure",
                                                                      spec.get("continue_on_failure", False)):
                     failed = True
         finally:
             self._cleanup(state["cleanup"])
-            set_active_run(None)
+            if record:
+                set_active_run(None)
             if loopback is not None:
                 loopback.extra_headers.pop("X-Sekmet-Simulate", None)
         result.duration_ms = round((time.perf_counter() - start) * 1000, 1)
@@ -228,7 +232,8 @@ class ScenarioRunner:
         result.status = ("error" if "error" in statuses else "failed" if "failed" in statuses
                          else "skipped" if statuses == {"skipped"} else "warning" if "warning" in statuses
                          else "passed")
-        self._persist(result)
+        if record:
+            self._persist(result)
         return result
 
     # ---------------- steps ----------------

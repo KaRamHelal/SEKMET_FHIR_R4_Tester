@@ -140,3 +140,20 @@ SEKMET fixes found while testing:
   Conditional headers (`If-None-Exist`, `If-Match`…) are exported, and conditional creates accept 200 or 201.
 - `<Type>.id` variables fall back to the `Location` header when a server answers with an empty body (HAPI
   conditional-create hit).
+
+## Round 9: load and concurrency mode, SEKMET under load and fhir-candle
+Built `sekmet load run`. Its first run (8 users, 20 s, `adt_admit_transfer_discharge`) against SEKMET's own server
+found **two SEKMET server bugs**:
+- **Concurrency bug:** reads on the shared SQLite connection ran without the store lock. Under parallel load, freshly
+  created resources read back as **404** and some requests failed with **500 "bad parameter or other API
+  misuse"**: 43.7% failed journeys, 1.8% 5xx. All store reads now hold the lock, and a regression test does 120
+  parallel create→read→search round trips. Result: **0% failed journeys, 0% 5xx**.
+- **Search scaled with data volume:** each search parameter was a correlated `EXISTS`, so SQLite scanned every
+  resource of the type (51 ms per search at only 337 Encounters). Throughput fell from 160 to 83 req/s over 30 s.
+  Search is now index-driven (`id IN (SELECT id FROM idx …)`) with new composite indexes on
+  (type, param, rtype, rid), lo and num: **0.36 ms** for the same query. The same 30 s run went from
+  110 → **145 req/s**, p95 156 → **84 ms**, and stays flat over time.
+- Minor: `log_inbound: false` skips the inbound traffic log (about 10%).
+**fhir-candle under the same load** (`adt_merge_update`, 8 users): 354 req/s, p95 37 ms, 0 errors, 0 failed
+journeys. So SEKMET's load client isn't the bottleneck; SEKMET's own server (Python + SQLite + a single write
+lock) tops out around 145 req/s on this machine.

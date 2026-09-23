@@ -21,8 +21,10 @@ keys_app = typer.Typer(help="SMART Backend Services keys", no_args_is_help=True)
 validator_app = typer.Typer(help="HL7 FHIR validator integration", no_args_is_help=True)
 subs_app = typer.Typer(help="Subscriptions on peers", no_args_is_help=True)
 ts_app = typer.Typer(help="Run FHIR TestScripts, export runs as TestScripts", no_args_is_help=True)
+load_app = typer.Typer(help="Load / concurrency testing with scenarios as user journeys", no_args_is_help=True)
 for sub, name in ((scenario_app, "scenario"), (peers_app, "peers"), (wf_app, "workflow"), (keys_app, "keys"),
-                  (validator_app, "validator"), (subs_app, "subscriptions"), (ts_app, "testscript")):
+                  (validator_app, "validator"), (subs_app, "subscriptions"), (ts_app, "testscript"),
+                  (load_app, "load")):
     app.add_typer(sub, name=name)
 
 ConfigOpt = typer.Option(None, "--config", "-c", help="settings.yaml path (default: $SEKMET_CONFIG or ./settings.yaml)")
@@ -215,6 +217,61 @@ def testscript_export(run_id: str, out: Optional[str] = None, config: Optional[s
     n_ops = sum("operation" in a for a in ts["test"][0]["action"])
     typer.echo(f"Wrote {target}: {n_ops} operations, {len(ts['variable']) - 1} id variables, "
                f"{len(ts['contained'])} fixtures")
+
+
+@load_app.command("run")
+def load_run(scenario: str = typer.Argument(..., help="scenario id/path used as the user journey"),
+             peer: str = typer.Option("self", "--peer", "-p"),
+             users: int = typer.Option(5, "--users", "-u", help="concurrent virtual users"),
+             duration: float = typer.Option(30, "--duration", "-d", help="seconds"),
+             iterations: Optional[int] = typer.Option(None, help="stop after this many journeys in total"),
+             ramp: float = typer.Option(0, help="seconds to start all users"),
+             think_ms: int = typer.Option(0, help="pause per user between journeys"),
+             var: list[str] = typer.Option([], "--var", help="scenario variable override name=value"),
+             log_traffic: bool = typer.Option(False, help="also log every request/response body (slower, big DB)"),
+             max_error_rate: Optional[float] = typer.Option(None, help="gate: max % of 5xx/transport errors"),
+             max_p95: Optional[float] = typer.Option(None, help="gate: max overall p95 latency (ms)"),
+             max_iteration_failure: Optional[float] = typer.Option(None, help="gate: max % failed journeys"),
+             i_own_this_system: bool = typer.Option(False, "--i-own-this-system",
+                                                    help="required for non-local peers: you are allowed to load it"),
+             report_dir: str = typer.Option("reports"), config: Optional[str] = ConfigOpt):
+    """Run a scenario as a load test: N users in parallel, per-endpoint latency percentiles, errors,
+    and scenario assertions under concurrency. Exit code 1 when a gate fails."""
+    from .load.report import write_load_report
+    from .load.runner import LoadConfig, LoadRunner, check_gates, is_local
+    settings = load_settings(config)
+    target = settings.peer(peer).base_url
+    if not is_local(target) and not i_own_this_system:
+        typer.secho(f"Refusing to load-test {target}: not local. Only load systems you own or are authorised to "
+                    f"stress, then pass --i-own-this-system.", fg="red")
+        raise typer.Exit(2)
+    server = None
+    if peer == "self" and not _server_up(settings.base_url):
+        ctx, server = _embedded_server(config)
+    else:
+        ctx = _ctx(config)
+    cfg = LoadConfig(scenario, peer, users, duration, iterations, ramp, think_ms, dict(v.split("=", 1) for v in var),
+                     log_traffic)
+    typer.secho(f"Load: {scenario} on {peer} ({target}), {users} users, {duration:g}s"
+                f"{f', max {iterations} journeys' if iterations else ''}", bold=True)
+    s = LoadRunner(ctx, cfg).run()
+    typer.echo(f"  requests {s['requests']}  throughput {s['throughput_rps']} req/s  "
+               f"p50 {s['latency']['p50']} ms  p95 {s['latency']['p95']} ms  p99 {s['latency']['p99']} ms")
+    typer.echo(f"  5xx/transport errors {s['server_error_rate_pct']}%   journeys {s['iterations']} "
+               f"({s['iterations_per_s']}/s, p95 {s['iteration_p95_ms']} ms)   failed journeys "
+               f"{s['iteration_failure_rate_pct']}%")
+    for e in s["endpoints"][:12]:
+        typer.echo(f"    {e['endpoint']:<44} n={e['count']:<6} p95={e['p95']:<8} err={e['server_errors']}")
+    for f in s["failures"][:5]:
+        typer.secho(f"  ✗ {f['count']}x {f['detail'][:200]}", fg="red")
+    paths = write_load_report(s, Path(report_dir) / f"{time.strftime('%Y%m%d-%H%M%S')}-load-{peer}")
+    typer.echo(f"  report: {paths['html']}")
+    gates = check_gates(s, max_error_rate, max_p95, max_iteration_failure)
+    for g in gates:
+        typer.secho(f"  GATE FAILED: {g}", fg="red")
+    if server:
+        server.should_exit = True
+    raise typer.Exit(1 if gates else 0)
 
 
 @peers_app.command("list")

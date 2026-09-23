@@ -156,12 +156,13 @@ class SearchEngine:
         if sp is None:
             raise Unsupported(f"Unknown search parameter '{name}' for {rtype}")
         i = aliases("i")
-        base = f"SELECT 1 FROM idx {i} WHERE {i}.type={alias}.type AND {i}.id={alias}.id AND {i}.param=?"
+        # index-driven: the candidate ids come from idx (type, param, ...) instead of probing idx once per resource
+        base = f"SELECT {i}.id FROM idx {i} WHERE {i}.type=? AND {i}.param=?"
         if dot:
             return self._chain(alias, rtype, sp, modifier, child, value, aliases, i, base)
         if modifier == "missing":
             missing = value.lower() == "true"
-            return (f"{'NOT ' if missing else ''}EXISTS ({base})", [name])
+            return (f"{alias}.id {'NOT ' if missing else ''}IN ({base})", [rtype, name])
         if modifier and modifier not in ("exact", "contains", "text", "not", "identifier", "below") and not (
                 sp.kind == "reference" and modifier[:1].isupper()):
             raise Unsupported(f"Modifier ':{modifier}' is not supported on '{name}'")
@@ -187,10 +188,8 @@ class SearchEngine:
             else:
                 raise Unsupported(f"Parameter kind {sp.kind} unsupported")
             ors.append(c); args.extend(a)
-        sql = f"EXISTS ({base} AND ({' OR '.join(ors)}))"
-        if modifier == "not":
-            sql = f"NOT {sql}"
-        return sql, [name, *args]
+        sql = f"{alias}.id {'NOT ' if modifier == 'not' else ''}IN ({base} AND ({' OR '.join(ors)}))"
+        return sql, [rtype, name, *args]
 
     def _chain(self, alias, rtype, sp, modifier, child, value, aliases, i, base):
         if sp.kind != "reference":
@@ -206,7 +205,7 @@ class SearchEngine:
                 targets = [t for t in PARAMS if t != "*"]
         if not targets:
             raise Unsupported(f"No target type supports chained parameter '{child_name}'")
-        subs, args = [], [sp.name]
+        subs, args = [], [rtype, sp.name]
         for t in targets:
             c = aliases("c")
             try:
@@ -218,7 +217,7 @@ class SearchEngine:
             args.extend([t, t, *inner_args])
         if not subs:
             raise Unsupported(f"Chained parameter '{child}' not supported on {targets}")
-        return f"EXISTS ({base} AND ({' OR '.join(subs)}))", args
+        return f"{alias}.id IN ({base} AND ({' OR '.join(subs)}))", args
 
     def _has(self, alias, rtype, key, value, aliases):
         parts = key.split(":")
@@ -230,10 +229,11 @@ class SearchEngine:
             raise Unsupported(f"_has: '{hparam}' is not a reference parameter of {htype}")
         h, hi = aliases("h"), aliases("i")
         inner_sql, inner_args = self._condition(h, htype, child, value, aliases)
-        sql = (f"EXISTS (SELECT 1 FROM resources {h} WHERE {h}.type = ? AND {h}.deleted = 0 AND EXISTS "
-               f"(SELECT 1 FROM idx {hi} WHERE {hi}.type = {h}.type AND {hi}.id = {h}.id AND {hi}.param = ? "
-               f"AND {hi}.rtype = {alias}.type AND {hi}.rid = {alias}.id) AND {inner_sql})")
-        return sql, [htype, hparam, *inner_args]
+        # ids of `rtype` referenced (via hparam) by htype resources that match the inner condition
+        sql = (f"{alias}.id IN (SELECT {hi}.rid FROM idx {hi} JOIN resources {h} ON {h}.type = {hi}.type "
+               f"AND {h}.id = {hi}.id WHERE {hi}.type = ? AND {hi}.param = ? AND {hi}.rtype = ? "
+               f"AND {h}.deleted = 0 AND {inner_sql})")
+        return sql, [htype, hparam, rtype, *inner_args]
 
     def build_where(self, rtype: str, params: list[tuple[str, str]], strict: bool,
                     issues: list[dict], used: list[tuple[str, str]]) -> tuple[str, list]:

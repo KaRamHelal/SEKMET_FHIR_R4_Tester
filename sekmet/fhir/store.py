@@ -34,6 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_res ON idx(type, id);
 CREATE INDEX IF NOT EXISTS idx_code ON idx(type, param, code);
 CREATE INDEX IF NOT EXISTS idx_ref ON idx(rtype, rid);
 CREATE INDEX IF NOT EXISTS idx_s ON idx(type, param, s);
+CREATE INDEX IF NOT EXISTS idx_refp ON idx(type, param, rtype, rid);
+CREATE INDEX IF NOT EXISTS idx_date ON idx(type, param, lo);
+CREATE INDEX IF NOT EXISTS idx_num ON idx(type, param, num);
 CREATE TABLE IF NOT EXISTS traffic (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, direction TEXT NOT NULL, peer TEXT,
   method TEXT, url TEXT, req_headers TEXT, req_body TEXT, status INTEGER, resp_headers TEXT, resp_body TEXT,
@@ -117,9 +120,19 @@ class Store:
         self.listeners.append(fn)
 
     # ---------------- reads ----------------
+    # One sqlite connection is shared by all threads: every access (reads too) must hold self.lock, otherwise
+    # concurrent requests see "bad parameter or other API misuse" or miss freshly committed rows.
+
+    def _one(self, sql: str, args: tuple | list = ()) -> sqlite3.Row | None:
+        with self.lock:
+            return self.conn.execute(sql, args).fetchone()
+
+    def _all(self, sql: str, args: tuple | list = ()) -> list[sqlite3.Row]:
+        with self.lock:
+            return self.conn.execute(sql, args).fetchall()
 
     def read(self, rtype: str, rid: str) -> dict | None:
-        row = self.conn.execute("SELECT json, deleted FROM resources WHERE type=? AND id=?", (rtype, rid)).fetchone()
+        row = self._one("SELECT json, deleted FROM resources WHERE type=? AND id=?", (rtype, rid))
         if not row:
             return None
         if row["deleted"]:
@@ -127,11 +140,10 @@ class Store:
         return json.loads(row["json"])
 
     def exists(self, rtype: str, rid: str) -> bool:
-        return self.conn.execute("SELECT 1 FROM resources WHERE type=? AND id=? AND deleted=0", (rtype, rid)).fetchone() is not None
+        return self._one("SELECT 1 FROM resources WHERE type=? AND id=? AND deleted=0", (rtype, rid)) is not None
 
     def vread(self, rtype: str, rid: str, vid: str) -> dict | None:
-        row = self.conn.execute("SELECT json, deleted FROM versions WHERE type=? AND id=? AND version=?",
-                                (rtype, rid, vid)).fetchone()
+        row = self._one("SELECT json, deleted FROM versions WHERE type=? AND id=? AND version=?", (rtype, rid, vid))
         if not row:
             return None
         if row["deleted"]:
@@ -148,25 +160,26 @@ class Store:
         if since:
             where.append("last_updated>=?"); args.append(since)
         w = ("WHERE " + " AND ".join(where)) if where else ""
-        total = self.conn.execute(f"SELECT COUNT(*) FROM versions {w}", args).fetchone()[0]
-        rows = self.conn.execute(f"SELECT * FROM versions {w} ORDER BY seq DESC LIMIT ? OFFSET ?",
-                                 [*args, limit, offset]).fetchall()
+        with self.lock:
+            total = self.conn.execute(f"SELECT COUNT(*) FROM versions {w}", args).fetchone()[0]
+            rows = self.conn.execute(f"SELECT * FROM versions {w} ORDER BY seq DESC LIMIT ? OFFSET ?",
+                                     [*args, limit, offset]).fetchall()
         return total, rows
 
     def load_many(self, keys: list[tuple[str, str]]) -> list[dict]:
         out = []
         for t, i in keys:
-            row = self.conn.execute("SELECT json FROM resources WHERE type=? AND id=? AND deleted=0", (t, i)).fetchone()
+            row = self._one("SELECT json FROM resources WHERE type=? AND id=? AND deleted=0", (t, i))
             if row:
                 out.append(json.loads(row["json"]))
         return out
 
     def counts(self) -> dict[str, int]:
-        rows = self.conn.execute("SELECT type, COUNT(*) c FROM resources WHERE deleted=0 GROUP BY type ORDER BY type")
+        rows = self._all("SELECT type, COUNT(*) c FROM resources WHERE deleted=0 GROUP BY type ORDER BY type")
         return {r["type"]: r["c"] for r in rows}
 
     def current_version(self, rtype: str, rid: str) -> tuple[int, bool] | None:
-        row = self.conn.execute("SELECT version, deleted FROM resources WHERE type=? AND id=?", (rtype, rid)).fetchone()
+        row = self._one("SELECT version, deleted FROM resources WHERE type=? AND id=?", (rtype, rid))
         return (row["version"], bool(row["deleted"])) if row else None
 
     # ---------------- writes ----------------
@@ -289,7 +302,7 @@ class Store:
             return self.conn.execute(sql, args).fetchall()
 
     def kv_get(self, k: str) -> str | None:
-        row = self.conn.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+        row = self._one("SELECT v FROM kv WHERE k=?", (k,))
         return row["v"] if row else None
 
     def kv_set(self, k: str, v: str) -> None:

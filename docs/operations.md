@@ -26,6 +26,7 @@ Settings are read from `$SEKMET_CONFIG`, else `./settings.yaml`. Env overrides: 
 | `sekmet workflow list` / `workflow run <key> -t <target> -a k=v` | a single hospital workflow step |
 | `sekmet seed --count N -t <target>` | master data + N patients (every other one admitted) |
 | `sekmet subscriptions register <peer>` | creates the `peers.<peer>.subscribe` Subscriptions on the peer |
+| `sekmet load run <scenario> -p <peer> -u 10 -d 60 [--ramp s] [--max-p95 ms] [--max-error-rate %] [--max-iteration-failure %]` | load test: scenario as user journey, per-endpoint percentiles, correctness under concurrency; exit 1 on a failed gate |
 | `sekmet testscript run <files\|dirs> -p <peer> [-p <peer2>] [-f fixtures/] [--var k=v]` | executes FHIR TestScripts (JSON or XML); writes reports plus one `TestReport-*.json` per script |
 | `sekmet testscript export <run id> [--out f.json]` | turns a recorded run into a replayable TestScript (requests, fixtures, id variables, response-code asserts) |
 | `sekmet scenario run … --var name=value` | overrides a scenario variable (e.g. another peer's topic canonical) |
@@ -71,6 +72,8 @@ environments you're allowed to write to.
 **`server_behaviour`**: spec-allowed variations SEKMET's server can show, to test HIS clients:
 - `absolute_references`: answer with absolute literal references (storage stays relative).
 
+**`log_inbound`**: record every inbound request/response in the traffic log (default true).
+
 **`validation`**: `inbound` (`strict` = reject invalid with 400, `warn`, `off`), `validator_jar`, `igs[]`,
 `tx_server`, `java`.
 
@@ -105,6 +108,22 @@ peer name). It reacts only to writes from outside SEKMET.
   directions; `Authorization`, secrets and tokens are redacted), peers, subscriptions, simulator, validator.
 - **Reports**: `reports/<time>-<peer>/report.html`. Each step lists its checks and the traffic ids involved.
 - **Traffic for one run**: `/ui/traffic?run=<run id>`.
+
+## Load and concurrency testing
+
+`sekmet load run <scenario> --peer <peer> --users N --duration S` runs any scenario as a **user journey**, with N
+virtual users in parallel. Scenario assertions still apply, so the report shows **correctness under concurrency**
+(failed journeys, grouped by first failing step) next to performance.
+- **Metrics:** requests, throughput, 5xx/transport error rate, overall and per-endpoint p50/p90/p95/p99/max, per
+  endpoint template (`GET Patient/{id}`, `POST Encounter`, `GET Encounter?search`…), and a per-second timeline.
+  `reports/<time>-load-<peer>/load.html` has throughput and p95 charts plus tables; `load.json` has everything.
+- **Options:** `--iterations` (total journeys), `--ramp` (spread user start), `--think-ms`, `--var`,
+  `--log-traffic` (per-request logging is off by default under load).
+- **Gates (CI):** `--max-error-rate`, `--max-p95`, `--max-iteration-failure`. Any breach exits with code 1.
+- **Safety:** non-local peers are refused unless you pass `--i-own-this-system`. Only load systems you're
+  authorised to stress, and never shared public test servers.
+- Master data is created once before the run (warm-up), so users don't race to create the same organizations.
+- For SEKMET's own server under heavy load, `log_inbound: false` skips the inbound traffic log (about 10% faster).
 
 ## FHIR TestScript
 

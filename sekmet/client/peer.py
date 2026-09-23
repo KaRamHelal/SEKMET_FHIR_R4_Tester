@@ -76,6 +76,8 @@ class PeerClient:
         self.auth = provider_for(peer, log=self._log_raw)
         self.http = httpx.Client(timeout=peer.timeout, verify=peer.verify_tls, follow_redirects=False)
         self.extra_headers: dict[str, str] = {}  # e.g. loopback simulator control set by the scenario runner
+        self.observers: list = []  # callables(method, url, status|None, elapsed_ms, error|None) - load metrics
+        self.log_traffic = True  # load mode may turn per-request DB logging off
 
     def close(self):
         self.http.close()
@@ -83,7 +85,7 @@ class PeerClient:
     # ---------------- core ----------------
 
     def _log_raw(self, r: httpx.Response, note: str | None = None) -> int | None:
-        if not self.store:
+        if not self.store or not self.log_traffic:
             return None
         req = r.request
         return self.store.log_traffic(
@@ -129,13 +131,17 @@ class PeerClient:
             try:
                 r = self.http.request(method, url, content=content, headers=h)
             except httpx.HTTPError as e:
-                if self.store:
+                for obs in self.observers:
+                    obs(method, url, None, (time.perf_counter() - start) * 1000, repr(e))
+                if self.store and self.log_traffic:
                     self.store.log_traffic(direction="outbound", peer=self.name, method=method, url=url,
                                            req_headers=redact_headers(h),
                                            req_body=body_text(content, self.max_body_log), status=None,
                                            duration_ms=round((time.perf_counter() - start) * 1000, 1),
                                            run_id=active_run(), note=f"transport error: {e!r}")
                 raise PeerError(f"{method} {url} failed: {e!r}")
+            for obs in self.observers:
+                obs(method, url, r.status_code, (time.perf_counter() - start) * 1000, None)
             if r.status_code == 401 and attempt == 1 and self.peer.auth.type in ("smart", "client_credentials"):
                 self._log_raw(r, note="401 - refreshing token and retrying")
                 self.auth.invalidate()
