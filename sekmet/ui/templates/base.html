@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}SEKMET{% endblock %} · SEKMET FHIR R4 Tester</title>
+<link rel="stylesheet" href="/ui/static/style.css">
+<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+<header>
+  <div class="brand">SEKMET <small>{{ settings.facility_name }} · FHIR R4 micro HIS</small></div>
+  <nav>
+    {% for key, label in [("dashboard","Dashboard"),("resources","Resources"),("workflows","Workflows"),("scenarios","Scenarios"),("traffic","Traffic"),("peers","Peers"),("subscriptions","Subscriptions"),("simulator","Simulator"),("validate","Validate")] %}
+    <a href="/ui{% if key != 'dashboard' %}/{{ key }}{% endif %}" class="{{ 'on' if nav.startswith(key) or (key=='resources' and nav=='resource') or (key=='scenarios' and nav=='run') or (key=='traffic' and nav=='traffic_detail') else '' }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <span class="mute mono" style="margin-left:auto">{{ settings.base_url }}</span>
+</header>
+<main>{% block main %}{% endblock %}</main>
+</body>
+</html>

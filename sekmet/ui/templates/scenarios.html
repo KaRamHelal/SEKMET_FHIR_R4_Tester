@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_macros.html" import run_pill %}
+{% block title %}Scenarios{% endblock %}
+{% block main %}
+<h1>Scenarios</h1>
+{% if running %}<div class="panel warn">Running: {{ running|join(', ') }} — <a href="/ui/scenarios">refresh</a></div>{% endif %}
+<div class="split" style="margin-top:16px">
+  <div class="panel">
+    <h2>Library</h2>
+    <form method="post" action="/ui/scenarios/run" class="row" style="margin-bottom:10px">
+      <div><label>Peer</label><select name="peer">{% for p in peers %}<option>{{ p }}</option>{% endfor %}</select></div>
+      <input type="hidden" name="scenario" value="__all__"><button>Run all</button>
+    </form>
+    <table>
+    {% for s in scenarios %}
+      <tr><td><b>{{ s.name }}</b> <span class="mute mono">{{ s.id }}</span><div class="mute">{{ s.description }}</div>
+        <div>{% for t in s.tags %}<span class="pill">{{ t }}</span> {% endfor %}<span class="mute">{{ s.steps }} steps</span></div></td>
+        <td style="width:220px"><form method="post" action="/ui/scenarios/run" class="row">
+          <input type="hidden" name="scenario" value="{{ s.id }}">
+          <select name="peer">{% for p in peers %}<option>{{ p }}</option>{% endfor %}</select><button>Run</button></form></td></tr>
+    {% endfor %}
+    </table>
+  </div>
+  <div class="panel">
+    <h2>Runs</h2>
+    <table>{% for r in runs %}<tr><td><a href="/ui/runs/{{ r.id }}">{{ r.scenario }}</a><div class="mute mono">{{ r.id }}</div></td><td>{{ r.peer }}</td><td>{{ run_pill(r.status) }}</td>
+      <td class="mono mute">{% for k, v in r.summary.items() %}{{ k }}:{{ v }} {% endfor %}</td></tr>{% else %}<tr><td class="mute">No runs yet.</td></tr>{% endfor %}</table>
+  </div>
+</div>
+{% endblock %}

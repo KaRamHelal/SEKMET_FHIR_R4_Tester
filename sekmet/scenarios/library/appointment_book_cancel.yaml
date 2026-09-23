@@ -1,0 +1,49 @@
+name: Scheduling - slots, booking, reschedule, cancel
+description: Schedule + Slot generation, booking marks slot busy, reschedule frees old slot, cancellation, proposed->accepted flow.
+tags: [scheduling]
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - name: Create schedule and slots
+    action: scheduling.create_schedule
+    args: {days: 2, slot_minutes: 30}
+    save: sched
+    expect: {fhirpath: ["slot_count >= 4"]}
+  - name: Free slots searchable
+    request: {method: GET, path: Slot, params: {schedule: "Schedule/${sched.schedule.id}", status: free, _sort: start}}
+    expect: {status: 200, fhirpath: ["Bundle.total >= 4 or Bundle.entry.count() >= 4"]}
+    save: free
+  - name: Book first slot (S12)
+    action: scheduling.book
+    args: {patient: "${reg.patient.id}", slot: "${sched.slots.0.id}"}
+    save: appt
+    expect: {on: appointment, fhirpath: ["Appointment.status = 'booked'"]}
+  - name: Slot is busy
+    request: {method: GET, path: "Slot/${sched.slots.0.id}"}
+    expect: {status: 200, fhirpath: ["Slot.status = 'busy'"]}
+  - name: Appointment searchable by patient
+    request: {method: GET, path: Appointment, params: {patient: "Patient/${reg.patient.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Appointment).id contains '${appt.appointment.id}'"]}
+  - name: Reschedule to another slot (S13)
+    action: scheduling.reschedule
+    args: {appointment: "${appt.appointment.id}", slot: "${sched.slots.1.id}"}
+    save: moved
+  - name: Old slot freed
+    request: {method: GET, path: "Slot/${sched.slots.0.id}"}
+    expect: {status: 200, fhirpath: ["Slot.status = 'free'"]}
+  - name: Cancel new appointment (S15)
+    action: scheduling.cancel
+    args: {appointment: "${moved.appointment.id}"}
+    expect: {on: appointment, fhirpath: ["Appointment.status = 'cancelled'"]}
+  - name: Request appointment (proposed)
+    action: scheduling.book
+    args: {patient: "${reg.patient.id}", slot: "${sched.slots.2.id}", status: proposed}
+    save: prop
+  - name: Practitioner accepts (AppointmentResponse)
+    action: scheduling.respond
+    args: {appointment: "${prop.appointment.id}", participant_status: accepted}
+    expect: {on: appointment, fhirpath: ["Appointment.status = 'booked'"]}
+  - {name: Check in, action: scheduling.check_in, args: {appointment: "${prop.appointment.id}"}, save: chk}
+  - name: Complete visit
+    action: scheduling.complete
+    args: {appointment: "${prop.appointment.id}"}
+    expect: {on: appointment, fhirpath: ["Appointment.status = 'fulfilled'"]}

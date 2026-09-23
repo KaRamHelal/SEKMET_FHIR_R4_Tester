@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_macros.html" import status_pill %}
+{% block title %}Traffic {{ t.id }}{% endblock %}
+{% block main %}
+<h1>#{{ t.id }} {{ t.method }} <span class="mono">{{ t.url }}</span> {{ status_pill(t.status) }}</h1>
+<p class="mute">{{ t.direction }} · {{ t.peer }} · {{ t.ts }} · {{ t.duration_ms }} ms · correlation <code>{{ t.correlation_id }}</code>{% if t.run_id %} · run <a href="/ui/runs/{{ t.run_id }}">{{ t.run_id }}</a>{% endif %}</p>
+{% if t.note %}<div class="panel"><h2>Note</h2><pre>{{ t.note }}</pre></div>{% endif %}
+<div class="split" style="margin-top:16px">
+  <div class="panel"><h2>Request</h2><h3>Headers</h3><pre>{{ t.req_headers|pretty }}</pre><h3>Body</h3><pre>{{ (t.req_body or '(empty)')|pretty }}</pre></div>
+  <div class="panel"><h2>Response</h2><h3>Headers</h3><pre>{{ t.resp_headers|pretty }}</pre><h3>Body</h3><pre>{{ (t.resp_body or '(empty)')|pretty }}</pre></div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ rtype }}/{{ rid }}{% endblock %}
+{% block main %}
+<h1>{{ rtype }}/<span class="mono">{{ rid }}</span> <span class="mute">{{ res|display }}</span></h1>
+<div class="split">
+  <div class="panel"><h2>Current version ({{ res.meta.versionId }})</h2><pre>{{ res|pretty }}</pre>
+    <p><a href="{{ settings.base_url }}/{{ rtype }}/{{ rid }}?_pretty=true">Open raw FHIR</a>
+    {% if rtype == 'Patient' %} · <a href="{{ settings.base_url }}/Patient/{{ rid }}/$everything?_pretty=true">$everything</a>{% endif %}</p>
+  </div>
+  <div>
+    {% if actions %}
+    <div class="panel"><h2>Workflows</h2>
+      {% for wf, param in actions %}
+      <a class="btn ghost" style="margin:0 4px 6px 0" href="/ui/workflows?key={{ wf.key }}&prefill={{ param }}={{ rid }}">{{ wf.title }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="panel" style="margin-top:16px"><h2>Referenced by ({{ refs|length }})</h2>
+      <table>{% for t, i in refs %}<tr><td>{{ t }}</td><td class="mono"><a href="/ui/resources/{{ t }}/{{ i }}">{{ i }}</a></td></tr>{% else %}<tr><td class="mute">Nothing references this resource.</td></tr>{% endfor %}</table>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>History</h2>
+      <table>{% for h in history %}<tr><td class="mono">v{{ h.version }}</td><td>{{ h.method }}</td><td class="mono mute">{{ h.last_updated }}</td>
+      <td>{% if h.json %}<details><summary>view</summary><pre>{{ h.json|pretty }}</pre></details>{% endif %}</td></tr>{% endfor %}</table>
+    </div>
+  </div>
+</div>
+{% endblock %}

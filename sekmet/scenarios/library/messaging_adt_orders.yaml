@@ -1,0 +1,21 @@
+name: FHIR Messaging - ADT and order events
+description: >
+  Sends message Bundles (MessageHeader + focus + referenced resources) to the peer's $process-message for
+  registration, admission, lab order and result; every message must be acknowledged with response.code = ok.
+tags: [messaging]
+target: messaging
+requires: {messaging: true}
+steps:
+  - {name: Register (A04 message), action: adt.register_patient, save: reg}
+  - {name: Admit (A01 message), action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - {name: Lab order (O21 message), action: orders.lab_order, args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}", test: "2345-7"}, save: order}
+  - {name: Result (R01 message), action: orders.lab_result, args: {service_request: "${order.service_request.id}"}}
+  - {name: Discharge (A03 message), action: adt.discharge, args: {encounter: "${adm.encounter.id}"}}
+  - name: Invalid message is rejected
+    target: peer
+    continue_on_failure: true
+    request:
+      method: POST
+      path: "$process-message"
+      body: {resourceType: Bundle, type: message, entry: [{resource: {resourceType: Patient}}]}
+    expect: {status: [400, 422]}

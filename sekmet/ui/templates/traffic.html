@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_macros.html" import traffic_table %}
+{% block title %}Traffic{% endblock %}
+{% block main %}
+<h1>Traffic log</h1>
+<div class="panel">
+  <form method="get" class="row">
+    <div><label>Direction</label><select name="direction"><option value="">all</option>{% for d in ['inbound','outbound'] %}<option {% if d == direction %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
+    <div><label>Status</label><select name="status"><option value="">all</option><option value="error" {% if status=='error' %}selected{% endif %}>errors (≥400 / transport)</option><option value="ok" {% if status=='ok' %}selected{% endif %}>ok</option></select></div>
+    <div><label>Run id</label><input name="run" value="{{ run }}"></div>
+    <div><label>URL / peer contains</label><input name="q" value="{{ q }}"></div>
+    <button>Filter</button>
+  </form>
+</div>
+<div class="panel" style="margin-top:16px">{{ traffic_table(rows) }}
+  <p>{% if page_no > 0 %}<a href="?direction={{ direction }}&status={{ status }}&run={{ run }}&q={{ q }}&page_no={{ page_no - 1 }}">← newer</a>{% endif %}
+  {% if rows|length == 100 %} <a href="?direction={{ direction }}&status={{ status }}&run={{ run }}&q={{ q }}&page_no={{ page_no + 1 }}">older →</a>{% endif %}</p>
+</div>
+{% endblock %}

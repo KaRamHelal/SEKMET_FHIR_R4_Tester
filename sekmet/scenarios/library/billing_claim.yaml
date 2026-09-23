@@ -1,0 +1,33 @@
+name: Billing - coverage, charges, claim and adjudication
+description: Coverage/Account/ChargeItem then Claim; waits for the payer (peer or simulator) to post a ClaimResponse.
+tags: [billing]
+simulator: true   # on the loopback peer the simulator plays the payer
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - {name: Outpatient visit, action: adt.outpatient_visit, args: {patient: "${reg.patient.id}"}, save: visit}
+  - {name: Coverage, action: billing.coverage, args: {patient: "${reg.patient.id}"}, save: cov}
+  - {name: Account, action: billing.account, args: {patient: "${reg.patient.id}", coverage: "${cov.coverage.id}"}, save: acct}
+  - name: Charges
+    action: billing.charge
+    args: {patient: "${reg.patient.id}", encounter: "${visit.encounter.id}", account: "${acct.account.id}", code: CONSULT}
+  - name: ChargeItems searchable by account
+    request: {method: GET, path: ChargeItem, params: {account: "Account/${acct.account.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+  - name: Submit claim
+    action: billing.claim
+    args: {patient: "${reg.patient.id}", coverage: "${cov.coverage.id}", encounter: "${visit.encounter.id}"}
+    save: clm
+    expect: {on: claim, fhirpath: ["Claim.total.value = 192"]}
+  - name: Wait for ClaimResponse
+    wait_for:
+      search: {type: ClaimResponse, params: {request: "Claim/${clm.claim.id}"}}
+      timeout: 30
+    save: cr
+  - name: Adjudication complete
+    assert: {on: cr, fhirpath: ["ClaimResponse.outcome = 'complete'", "ClaimResponse.payment.amount.value > 0"]}
+  - name: Synchronous Claim/$submit
+    continue_on_failure: true
+    requires: {operation: submit}
+    action: billing.claim
+    args: {patient: "${reg.patient.id}", coverage: "${cov.coverage.id}", use_submit: true}
+    expect: {on: claim_response, fhirpath: ["ClaimResponse.outcome = 'complete'"]}

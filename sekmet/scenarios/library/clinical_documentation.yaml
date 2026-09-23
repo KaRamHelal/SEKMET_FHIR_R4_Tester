@@ -1,0 +1,30 @@
+name: Clinical - problems, allergies, procedures, vitals
+description: Records clinical data for an encounter and checks category/clinical-status searches.
+tags: [clinical]
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - {name: Admit, action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - {name: Diagnosis, action: clinical.condition, args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}", code: "233604007"}}
+  - {name: Problem list item, action: clinical.condition, args: {patient: "${reg.patient.id}", code: "38341003", category: problem-list-item}}
+  - {name: Penicillin allergy, action: clinical.allergy, args: {patient: "${reg.patient.id}"}}
+  - {name: Procedure, action: clinical.procedure, args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}"}}
+  - name: Vital signs
+    action: clinical.vitals
+    args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}"}
+    expect: {fhirpath: ["observations.count() = 6"]}
+  - name: Active conditions for patient
+    request: {method: GET, path: Condition, params: {patient: "Patient/${reg.patient.id}", clinical-status: active}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 2"]}
+  - name: Problem list only
+    request: {method: GET, path: Condition, params: {patient: "Patient/${reg.patient.id}", category: problem-list-item}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+  - name: Allergies
+    request: {method: GET, path: AllergyIntolerance, params: {patient: "Patient/${reg.patient.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(AllergyIntolerance).code.coding.code contains '91936005'"]}
+  - name: Vital signs by category
+    request: {method: GET, path: Observation, params: {patient: "Patient/${reg.patient.id}", category: vital-signs}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 6"]}
+  - name: Blood pressure by component code
+    request: {method: GET, path: Observation, params: {patient: "Patient/${reg.patient.id}", component-code: "http://loinc.org|8480-6"}}
+    continue_on_failure: true
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}

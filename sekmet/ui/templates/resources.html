@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ rtype }}{% endblock %}
+{% block main %}
+<h1>Resources</h1>
+<div class="panel">
+  <form method="get" class="row">
+    <div><label>Type</label><input name="type" value="{{ rtype }}" list="types"></div>
+    <datalist id="types">{% for t in counts %}<option value="{{ t }}">{% endfor %}</datalist>
+    <div style="flex:3"><label>Search parameters (FHIR query string)</label><input name="q" value="{{ q }}" placeholder="e.g. name=smith&birthdate=ge1980 or patient=Patient/123&status=final"></div>
+    <button>Search</button>
+  </form>
+  <div class="stat" style="margin-top:10px">{% for t, c in counts.items() %}<a href="?type={{ t }}">{{ t }}<b>{{ c }}</b></a>{% endfor %}</div>
+</div>
+<div class="panel" style="margin-top:16px">
+  {% if error %}<p class="bad">{{ error }}</p>{% endif %}
+  <h2>{{ total }} {{ rtype }}</h2>
+  <div class="scroll"><table>
+    <tr><th>id</th><th>Summary</th><th>Status</th><th>v</th><th>Updated</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td class="mono"><a href="/ui/resources/{{ r.resourceType }}/{{ r.id }}">{{ r.id[:13] }}</a></td>
+      <td>{{ r|display }} {% if r.identifier %}<span class="mute mono">{{ r.identifier[0].value }}</span>{% endif %}
+        {% if r.subject %}<span class="mute">· {{ r.subject.display or r.subject.reference }}</span>{% endif %}</td>
+      <td>{{ r.status or ('active' if r.active else '') }}</td>
+      <td class="mono">{{ r.meta.versionId }}</td>
+      <td class="mono mute">{{ r.meta.lastUpdated[:19] }}</td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="mute">No matches.</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endblock %}

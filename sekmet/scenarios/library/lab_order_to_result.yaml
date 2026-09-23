@@ -1,0 +1,44 @@
+name: Lab - order to final result
+description: >
+  Placer + filler both driven by SEKMET against the peer: ServiceRequest+Task (transaction), accept, specimen,
+  Observations + DiagnosticReport (transaction), order completion. Verifies linkage via search.
+tags: [orders, lab]
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - {name: Admit, action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - name: Place BMP order
+    action: orders.lab_order
+    args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}", test: "51990-0"}
+    save: order
+    expect:
+      on: service_request
+      fhirpath: ["ServiceRequest.status = 'active'", "ServiceRequest.intent = 'order'"]
+  - name: Task links to the order
+    request: {method: GET, path: Task, params: {based-on: "ServiceRequest/${order.service_request.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Task).status = 'requested'"]}
+  - {name: Filler accepts, action: orders.accept, args: {service_request: "${order.service_request.id}"}}
+  - {name: Collect specimen, action: orders.collect_specimen, args: {service_request: "${order.service_request.id}"}}
+  - name: Report results
+    action: orders.lab_result
+    args: {service_request: "${order.service_request.id}"}
+    save: res
+    expect: {on: diagnostic_report, fhirpath: ["DiagnosticReport.status = 'final'", "DiagnosticReport.result.count() = 4"]}
+  - name: Observations searchable by based-on
+    request: {method: GET, path: Observation, params: {based-on: "ServiceRequest/${order.service_request.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 4"]}
+  - name: DiagnosticReport by patient + category with _include results
+    request:
+      method: GET
+      path: DiagnosticReport
+      params: {patient: "Patient/${reg.patient.id}", category: LAB, _include: "DiagnosticReport:result"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Bundle.entry.where(search.mode = 'match').count() = 1"
+        - "Bundle.entry.resource.ofType(Observation).count() = 4"
+  - name: Order and task completed
+    request: {method: GET, path: "ServiceRequest/${order.service_request.id}"}
+    expect: {status: 200, fhirpath: ["ServiceRequest.status = 'completed'"]}
+  - name: Task completed with output
+    request: {method: GET, path: "Task/${order.task.id}"}
+    expect: {status: 200, fhirpath: ["Task.status = 'completed'", "Task.output.valueReference.reference.contains('DiagnosticReport/')"]}

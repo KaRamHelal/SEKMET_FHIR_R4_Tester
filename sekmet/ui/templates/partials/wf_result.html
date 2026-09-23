@@ -1,0 +1,9 @@
+{% if error %}<p class="bad"><b>Failed:</b> {{ error }}</p>
+{% else %}
+<p class="ok"><b>Done</b> on <code>{{ target }}</code>.
+{% for k, v in result.items() if k != '_meta' %}
+  {% if v is mapping and v.resourceType %}<br>{{ k }}: {% if target == 'local' or target.startswith('messaging') %}<a href="/ui/resources/{{ v.resourceType }}/{{ v.id }}">{{ v.resourceType }}/{{ v.id }}</a>{% else %}<code>{{ v.resourceType }}/{{ v.id }}</code>{% endif %}{% endif %}
+{% endfor %}</p>
+{% if result._meta.acks %}<p>Message acks: {% for a in result._meta.acks %}<span class="pill {{ 'ok' if a.ok else 'bad' }}">{{ a.event }} {{ a.response_code or a.status }}</span> {% endfor %}</p>{% endif %}
+<details><summary>Result JSON</summary><pre>{{ result|pretty }}</pre></details>
+{% endif %}

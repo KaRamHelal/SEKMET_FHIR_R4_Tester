@@ -1,0 +1,25 @@
+# SEKMET + a HAPI FHIR R4 server acting as a stand-in "real HIS" for self-testing.
+#   docker compose up -d
+#   docker compose exec sekmet sekmet scenario run all --peer hapi
+services:
+  sekmet:
+    build: .
+    ports: ["8090:8090"]
+    environment:
+      SEKMET_CONFIG: /app/config/settings.compose.yaml
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./keys:/app/keys
+      - ./scenarios:/app/scenarios
+    depends_on: [hapi]
+
+  hapi:
+    image: hapiproject/hapi:latest
+    ports: ["8081:8080"]
+    environment:
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.allow_multiple_delete: "true"
+      hapi.fhir.allow_external_references: "true"
+      hapi.fhir.subscription.resthook_enabled: "true"
+      hapi.fhir.reuse_cached_search_results_millis: "-1"

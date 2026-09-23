@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Simulator{% endblock %}
+{% block main %}
+<h1>Simulator <span class="pill {{ 'ok' if cfg.enabled else 'bad' }}">{{ 'enabled' if cfg.enabled else 'disabled' }}</span></h1>
+<div class="panel">
+  <p>When a peer writes one of <b>{{ cfg.auto|join(', ') }}</b> to this server (REST or messaging), SEKMET plays the counterpart after {{ cfg.delay_seconds }}s:
+  lab/RIS filler (Task → Specimen/ImagingStudy → Observations + DiagnosticReport), scheduler (AppointmentResponse), pharmacy (MedicationDispense) and payer (ClaimResponse).
+  Results go to <code>{{ cfg.results_to }}</code>.</p>
+  <form method="post" action="/ui/simulator/toggle"><button class="ghost">{{ 'Disable' if cfg.enabled else 'Enable' }} (until restart)</button></form>
+</div>
+<div class="panel" style="margin-top:16px"><table><tr><th>Time</th><th>Action</th><th>Subject</th><th>Result</th></tr>
+{% for s in sim %}<tr><td class="mono mute">{{ s.ts[11:19] }}</td><td>{{ s.action }}</td><td class="mono"><a href="/ui/resources/{{ s.subject }}">{{ s.subject }}</a></td><td class="{{ 'ok' if s.ok else 'bad' }}">{{ s.detail }}</td></tr>
+{% else %}<tr><td colspan="4" class="mute">No activity.</td></tr>{% endfor %}</table></div>
+{% endblock %}

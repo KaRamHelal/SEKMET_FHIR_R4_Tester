@@ -1,0 +1,10 @@
+# Used by docker-compose: SEKMET is reachable from HAPI as http://sekmet:8090
+base_url: http://localhost:8090/fhir
+public_url: http://sekmet:8090
+host: 0.0.0.0
+port: 8090
+data_dir: /app/data
+peers:
+  hapi:
+    base_url: http://hapi:8080/fhir
+    auth: {type: none}

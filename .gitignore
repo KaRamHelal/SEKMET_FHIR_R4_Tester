@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+data/
+reports/
+keys/
+settings.yaml
+*.db
+*.db-*
+validator_cli.jar
+tools/

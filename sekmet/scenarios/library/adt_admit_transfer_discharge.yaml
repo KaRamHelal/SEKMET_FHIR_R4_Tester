@@ -1,0 +1,42 @@
+name: ADT - register, admit, transfer, discharge
+description: Inpatient stay lifecycle on the peer; verifies Encounter status, location history and period.
+tags: [adt]
+steps:
+  - {name: Ensure facility master data, action: adt.facility}
+  - {name: Register patient (A04), action: adt.register_patient, save: reg}
+  - name: Find patient by MRN
+    request: {method: GET, path: Patient, params: {identifier: "${ids.mrn}|${reg.mrn}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+  - name: Admit (A01)
+    action: adt.admit
+    args: {patient: "${reg.patient.id}", bed: bed-401-1}
+    save: adm
+    expect: {on: encounter, fhirpath: ["Encounter.status = 'in-progress'", "Encounter.class.code = 'IMP'"]}
+  - name: Encounter is searchable by patient and status
+    request: {method: GET, path: Encounter, params: {patient: "Patient/${reg.patient.id}", status: in-progress}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(Encounter).id contains '${adm.encounter.id}'"]}
+  - name: Transfer (A02)
+    action: adt.transfer
+    args: {encounter: "${adm.encounter.id}", bed: bed-502-1}
+    expect:
+      on: encounter
+      fhirpath:
+        - "Encounter.location.count() = 2"
+        - "Encounter.location.where(status = 'active').count() = 1"
+        - "Encounter.location.where(status = 'completed').period.end.exists()"
+  - name: Discharge (A03)
+    action: adt.discharge
+    args: {encounter: "${adm.encounter.id}", disposition: home}
+    save: dis
+  - name: Read back discharged encounter
+    request: {method: GET, path: "Encounter/${adm.encounter.id}"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Encounter.status = 'finished'"
+        - "Encounter.period.end.exists()"
+        - "Encounter.hospitalization.dischargeDisposition.coding.code = 'home'"
+  - name: Encounter version history has 3+ versions
+    requires: {resource: Encounter, interaction: history-instance}
+    request: {method: GET, path: "Encounter/${adm.encounter.id}/_history"}
+    expect: {status: 200, fhirpath: ["Bundle.entry.count() >= 3"]}

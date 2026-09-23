@@ -1,0 +1,26 @@
+name: Medications - prescribe, dispense, administer, stop
+description: MedicationRequest -> MedicationDispense -> MedicationAdministration with linkage checks.
+tags: [medications]
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - {name: Admit, action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - name: Prescribe amlodipine
+    action: meds.prescribe
+    args: {patient: "${reg.patient.id}", encounter: "${adm.encounter.id}", medication: "197361", inpatient: true}
+    save: rx
+    expect: {on: medication_request, fhirpath: ["MedicationRequest.status = 'active'", "MedicationRequest.medicationCodeableConcept.coding.code = '197361'"]}
+  - {name: Dispense, action: meds.dispense, args: {medication_request: "${rx.medication_request.id}"}, save: disp}
+  - name: Dispense searchable by prescription
+    request: {method: GET, path: MedicationDispense, params: {prescription: "MedicationRequest/${rx.medication_request.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}
+  - {name: Administer, action: meds.administer, args: {medication_request: "${rx.medication_request.id}"}}
+  - name: Administration searchable by patient
+    request: {method: GET, path: MedicationAdministration, params: {patient: "Patient/${reg.patient.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() >= 1"]}
+  - name: Stop therapy
+    action: meds.stop
+    args: {medication_request: "${rx.medication_request.id}"}
+    expect: {on: medication_request, fhirpath: ["MedicationRequest.status = 'stopped'"]}
+  - name: Active prescriptions no longer include it
+    request: {method: GET, path: MedicationRequest, params: {patient: "Patient/${reg.patient.id}", status: active}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.resource.ofType(MedicationRequest).where(id = '${rx.medication_request.id}').empty()"]}

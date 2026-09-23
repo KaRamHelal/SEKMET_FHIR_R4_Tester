@@ -1,0 +1,10 @@
+{% if error %}<p class="bad">{{ error }}</p>
+{% elif info.error %}<p class="bad">{{ info.error }}</p><pre>{{ info|pretty }}</pre>
+{% else %}
+<p><span class="pill ok">FHIR {{ info.fhirVersion }}</span> {{ info.software }} · formats {{ (info.formats or [])|join(', ') }} · security {{ (info.security or ['none'])|join(', ') }} · messaging {{ 'yes' if info.messaging else 'no' }}</p>
+{% if info.token %}<p>SMART token granted: <code>{{ info.token.scope }}</code> (expires in {{ info.token.expires_in }}s)</p>{% endif %}
+{% if info.token_error %}<p class="bad">SMART token failed: {{ info.token_error }}</p>{% endif %}
+{% if info.missing_for_flows %}<p class="warn">Not advertised (flows using these will likely fail): {{ info.missing_for_flows|join(', ') }}</p>{% endif %}
+<details><summary>{{ info.resources|length }} resource types</summary><table><tr><th>Type</th><th>Interactions</th><th>Search params</th><th>Cond. create</th></tr>
+{% for t, r in info.resources.items() %}<tr><td>{{ t }}</td><td class="mono">{{ r.interactions|join(' ') }}</td><td>{{ r.search_params }}</td><td>{{ r.conditional_create }}</td></tr>{% endfor %}</table></details>
+{% endif %}

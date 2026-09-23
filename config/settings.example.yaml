@@ -1,0 +1,68 @@
+# SEKMET FHIR R4 Tester settings. Copy to ./settings.yaml (or point SEKMET_CONFIG at it).
+
+# Where this micro HIS serves FHIR. Peers must be able to reach public_url for rest-hook notifications.
+base_url: http://localhost:8090/fhir
+port: 8090
+# public_url: http://my-laptop.example:8090     # externally reachable root, used in /hooks endpoints
+facility_name: SEKMET General Hospital
+data_dir: data
+
+# Auth accepted by OUR FHIR endpoint (what the real HIS must send when calling us).
+server_auth:
+  types: [none]                # any of: none, basic, bearer, smart
+  users: {tester: change-me}   # basic
+  tokens: [static-test-token]  # bearer
+  smart_clients:               # SMART Backend Services clients allowed to get tokens at /auth/token
+    - client_id: real-his
+      jwks_url: https://real-his.example/.well-known/jwks.json   # or jwks: {...} / public_key_path: keys/his_pub.pem
+      scopes: "system/*.read system/*.write"
+  enforce_scopes: true
+
+validation:
+  inbound: strict              # strict (reject invalid with 400) | warn (accept, log) | off
+  # validator_jar: tools/validator_cli.jar   # `sekmet validator download`
+  # igs: [hl7.fhir.us.core#6.1.0]
+  tx_server: n/a
+
+# Identifier systems used in generated data (use your HIS's namespaces if it validates them).
+identifiers:
+  mrn: urn:oid:1.2.3.4.5.1
+  visit: urn:oid:1.2.3.4.5.2
+
+# Inbound auto-responder: plays lab/RIS filler, scheduler, pharmacy and payer for what peers send us.
+simulator:
+  enabled: true
+  delay_seconds: 2
+  results_to: local            # or a peer name to POST results back to it
+
+subscriptions:
+  notify_method: put-resource  # R4 rest-hook with payload: PUT {endpoint}/{type}/{id}; or post-endpoint
+  retries: 3
+
+# Private key SEKMET uses to sign SMART client assertions (`sekmet keys generate`); JWKS served at /.well-known/jwks.json
+own_private_key_path: keys/sekmet_private.pem
+
+# The real systems under test. `self` (loopback to this server) is always available.
+peers:
+  hapi:
+    base_url: http://localhost:8081/fhir
+    auth: {type: none}
+    mode: rest
+    subscribe:
+      - criteria: "DiagnosticReport?status=final"
+  # real-his-rest:
+  #   base_url: https://his.example.org/fhir/r4
+  #   auth:
+  #     type: smart
+  #     client_id: sekmet-tester
+  #     private_key_path: keys/sekmet_private.pem
+  #     scope: "system/*.read system/*.write"
+  #     # token_url: https://his.example.org/oauth2/token   # discovered via .well-known when omitted
+  #   headers: {X-Tenant: demo}
+  #   use_transactions: true
+  #   prefer_return: representation
+  # real-his-messaging:
+  #   base_url: https://his.example.org/fhir/r4
+  #   mode: messaging
+  #   messaging_endpoint: https://his.example.org/fhir/r4/$process-message
+  #   auth: {type: bearer, token: "..."}

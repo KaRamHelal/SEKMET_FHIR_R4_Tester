@@ -1,0 +1,27 @@
+name: ADT - demographics update and patient merge
+description: A08 demographic update with version check, then A40-style merge using Patient.link.
+tags: [adt]
+steps:
+  - {name: Register patient A, action: adt.register_patient, save: a}
+  - {name: Register duplicate B, action: adt.register_patient, save: b}
+  - name: Update demographics (A08)
+    action: adt.update_patient
+    args: {patient: "${a.patient.id}", phone: "+1-555-000-1234"}
+    expect: {on: patient, fhirpath: ["Patient.telecom.where(system = 'phone').value contains '+1-555-000-1234'"]}
+  - name: Merge B into A (A40)
+    action: adt.merge_patients
+    args: {survivor: "${a.patient.id}", merged: "${b.patient.id}"}
+  - name: Retired patient is inactive and replaced-by survivor
+    request: {method: GET, path: "Patient/${b.patient.id}"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Patient.active = false"
+        - "Patient.link.where(type = 'replaced-by').other.reference.endsWith('Patient/${a.patient.id}')"
+  - name: Survivor carries replaces link and old MRN
+    request: {method: GET, path: "Patient/${a.patient.id}"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Patient.link.where(type = 'replaces').exists()"
+        - "Patient.identifier.where(value = '${b.mrn}').exists()"

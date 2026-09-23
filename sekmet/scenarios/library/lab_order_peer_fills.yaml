@@ -1,0 +1,24 @@
+name: Lab - peer acts as filler (placer test)
+description: >
+  SEKMET places a lab order on the peer and waits for the peer (LIS/filler) to produce a DiagnosticReport.
+  Against the loopback peer 'self' the built-in simulator plays the filler.
+tags: [orders, lab, filler]
+simulator: true   # on the loopback peer the built-in simulator plays the filler
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - name: Place CBC order
+    action: orders.lab_order
+    args: {patient: "${reg.patient.id}", test: "58410-2", priority: stat}
+    save: order
+  - name: Wait for final DiagnosticReport from the filler
+    wait_for:
+      search: {type: DiagnosticReport, params: {based-on: "ServiceRequest/${order.service_request.id}"}}
+      fhirpath: "DiagnosticReport.status = 'final'"
+      timeout: 60
+    save: report
+  - name: Report carries results
+    assert: {on: report, fhirpath: ["DiagnosticReport.result.exists()", "DiagnosticReport.subject.reference.contains('${reg.patient.id}')"]}
+  - name: Task reached completed
+    wait_for:
+      search: {type: Task, params: {based-on: "ServiceRequest/${order.service_request.id}", status: completed}}
+      timeout: 30

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_macros.html" import run_pill %}
+{% block title %}{{ r.name }}{% endblock %}
+{% block main %}
+<h1>{{ r.name }} {{ run_pill(r.status) }}</h1>
+<p class="mute">{{ r.description }}<br>peer <code>{{ r.peer }}</code> · run <code>{{ r.run_id }}</code> · {{ '%.1f'|format(r.duration_ms / 1000) }}s · {{ r.started }} ·
+<a href="/ui/traffic?run={{ r.run_id }}">traffic for this run</a></p>
+<div class="panel"><div class="scroll"><table>
+<tr><th>#</th><th>Step</th><th>Status</th><th>Details</th></tr>
+{% for s in r.steps %}
+<tr><td>{{ s.index }}</td><td><b>{{ s.name }}</b><div class="mute">{{ s.kind }} · {{ s.duration_ms|int }} ms</div></td><td>{{ run_pill(s.status) }}</td>
+<td>{% if s.message %}<pre>{{ s.message }}</pre>{% endif %}
+{% for c in s.checks %}<div class="{{ 'ok' if c.ok else 'bad' }}">{{ '✓' if c.ok else '✗' }} {{ c.check }} <span class="mute">→ {{ c.detail|string|truncate(240) }}</span></div>{% endfor %}
+{% if s.traffic_ids %}<div class="mute">traffic: {% for t in s.traffic_ids[:30] %}<a href="/ui/traffic/{{ t }}">{{ t }}</a> {% endfor %}</div>{% endif %}
+</td></tr>
+{% endfor %}
+</table></div></div>
+{% endblock %}

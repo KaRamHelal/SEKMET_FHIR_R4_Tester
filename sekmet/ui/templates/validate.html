@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Validate{% endblock %}
+{% block main %}
+<h1>Validate a resource</h1>
+<div class="split">
+  <form class="panel" method="post">
+    <label>FHIR JSON</label><textarea name="body" placeholder='{"resourceType": "Patient", ...}'>{{ body }}</textarea>
+    <label><input type="checkbox" name="conformance" value="true"> Also run the HL7 validator{% if not settings.validation.validator_jar %} (not configured: <code>sekmet validator download</code>){% endif %}</label>
+    <p><button>Validate</button></p>
+  </form>
+  <div class="panel">
+    {% if oo %}<h2 class="{{ 'ok' if ok else 'bad' }}">{{ 'Valid' if ok else 'Invalid' }}</h2>
+    <table>{% for i in oo.issue %}<tr><td><span class="pill {{ 'bad' if i.severity in ['error','fatal'] else 'warn' if i.severity == 'warning' else '' }}">{{ i.severity }}</span></td><td class="mono">{{ i.code }}</td><td>{{ i.diagnostics }}{% if i.expression %} <span class="mute mono">{{ i.expression|join(', ') }}</span>{% endif %}</td></tr>{% endfor %}</table>
+    {% else %}<p class="mute">Structural validation uses the R4(B) models; IG/profile conformance uses the HL7 validator when configured.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

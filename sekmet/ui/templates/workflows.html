@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Workflows{% endblock %}
+{% block main %}
+<h1>Workflows</h1>
+<p class="mute">Run hospital workflows against the local store, a peer over REST (<code>rest:&lt;peer&gt;</code>) or locally while messaging the peer (<code>messaging:&lt;peer&gt;</code>). References accept an id or <code>Type/id</code>.</p>
+<div class="grid">
+{% for group, items in groups.items() %}
+  <div class="panel">
+    <h2>{{ group|upper }}</h2>
+    {% for w in items %}
+    <details class="wf" {% if selected == w.key %}open{% endif %} id="{{ w.key }}">
+      <summary>{{ w.title }} <span class="mute mono" style="font-weight:400">{{ w.key }}</span></summary>
+      {% if w.description %}<p class="mute">{{ w.description }}</p>{% endif %}
+      <form method="post" action="/ui/workflows/{{ w.key }}" hx-post="/ui/workflows/{{ w.key }}" hx-target="#out-{{ w.key|replace('.', '-') }}" hx-indicator="#ind-{{ w.key|replace('.', '-') }}">
+        <label>Target</label>
+        <select name="_target">
+          <option value="local">local store</option>
+          {% for p in peers %}<option value="rest:{{ p }}">rest:{{ p }}</option><option value="messaging:{{ p }}">messaging:{{ p }}</option>{% endfor %}
+        </select>
+        {% for p in w.params %}
+          {% set val = prefill.get(p.name) if selected == w.key and prefill.get(p.name) else (p.default if p.default is not none else '') %}
+          {% if p.kind == 'bool' %}
+            <label><input type="checkbox" name="{{ p.name }}" {% if val %}checked{% endif %}> {{ p.label or p.name }}</label>
+          {% elif p.kind == 'choice' %}
+            <label>{{ p.label or p.name }}</label>
+            <select name="{{ p.name }}">{% for c in p.choices %}<option value="{{ c }}" {% if c == val %}selected{% endif %}>{{ c or '(any)' }}</option>{% endfor %}</select>
+          {% else %}
+            <label>{{ p.label or p.name }}{% if p.required %} *{% endif %}{% if p.ref_type %} <span class="mono">({{ p.ref_type }})</span>{% endif %}</label>
+            <input name="{{ p.name }}" value="{{ val }}" {% if p.required %}required{% endif %}>
+          {% endif %}
+        {% endfor %}
+        <p><button>Run</button> <span class="htmx-indicator mute" id="ind-{{ w.key|replace('.', '-') }}">running…</span></p>
+      </form>
+      <div id="out-{{ w.key|replace('.', '-') }}"></div>
+    </details>
+    {% endfor %}
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

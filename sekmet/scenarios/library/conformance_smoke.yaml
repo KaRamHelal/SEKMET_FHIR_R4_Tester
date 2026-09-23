@@ -1,0 +1,153 @@
+name: REST conformance smoke test
+description: >
+  Core RESTful behaviour every HIS FHIR endpoint should get right - CapabilityStatement, CRUD, versioning,
+  conditional create, optimistic locking, search by identifier, paging, _include, transactions and delete.
+tags: [conformance, rest]
+continue_on_failure: true   # checks are independent; report every one
+steps:
+  - name: CapabilityStatement
+    request: {method: GET, path: metadata}
+    expect:
+      status: 200
+      fhirpath:
+        - "CapabilityStatement.fhirVersion.startsWith('4.0')"
+        - "CapabilityStatement.format.where($this = 'json' or $this = 'application/fhir+json').exists()"
+        - "CapabilityStatement.rest.where(mode = 'server').resource.where(type = 'Patient').exists()"
+
+  - set: {mrn: "SMK${uid}"}
+
+  - name: Create Patient
+    request:
+      method: POST
+      path: Patient
+      body:
+        resourceType: Patient
+        identifier: [{system: "${ids.mrn}", value: "${mrn}"}]
+        name: [{family: "Smoketest", given: ["Conformance"]}]
+        gender: female
+        birthDate: "1971-02-03"
+    expect:
+      status: 201
+      headers: {Location: present, ETag: present}
+      fhirpath: ["Patient.id.exists()", "Patient.meta.versionId.exists()"]
+    save: created
+
+  - name: Read Patient
+    request: {method: GET, path: "Patient/${created.body.id}"}
+    expect:
+      status: 200
+      headers: {ETag: present}
+      fhirpath: ["Patient.identifier.value = '${mrn}'"]
+    save: read
+
+  - name: Conditional create does not duplicate
+    request:
+      method: POST
+      path: Patient
+      headers: {If-None-Exist: "identifier=${ids.mrn}|${mrn}"}
+      body: {resourceType: Patient, identifier: [{system: "${ids.mrn}", value: "${mrn}"}], name: [{family: Duplicate}]}
+    expect: {status: [200, 201, 412]}
+
+  - name: Search by identifier finds exactly one
+    request: {method: GET, path: Patient, params: {identifier: "${ids.mrn}|${mrn}"}}
+    expect:
+      status: 200
+      fhirpath: ["Bundle.type = 'searchset'", "Bundle.entry.where(search.mode = 'match').count() = 1"]
+
+  - name: Update with correct If-Match
+    request:
+      method: PUT
+      path: "Patient/${created.body.id}"
+      headers: {If-Match: "W/\"${read.body.meta.versionId}\""}
+      body:
+        resourceType: Patient
+        id: "${created.body.id}"
+        identifier: [{system: "${ids.mrn}", value: "${mrn}"}]
+        name: [{family: "Smoketest", given: ["Updated"]}]
+        gender: female
+        birthDate: "1971-02-03"
+    expect:
+      status: 200
+      fhirpath: ["Patient.name.given contains 'Updated'"]
+    save: updated
+
+  - name: Stale If-Match is rejected (409/412)
+    continue_on_failure: true
+    request:
+      method: PUT
+      path: "Patient/${created.body.id}"
+      headers: {If-Match: "W/\"${read.body.meta.versionId}\""}
+      body: {resourceType: Patient, id: "${created.body.id}", name: [{family: Stale}]}
+    expect: {status: [409, 412]}
+
+  - name: vread first version
+    requires: {resource: Patient, interaction: vread}
+    request: {method: GET, path: "Patient/${created.body.id}/_history/${read.body.meta.versionId}"}
+    expect: {status: 200, fhirpath: ["Patient.name.given contains 'Conformance'"]}
+
+  - name: Instance history
+    requires: {resource: Patient, interaction: history-instance}
+    request: {method: GET, path: "Patient/${created.body.id}/_history"}
+    expect: {status: 200, fhirpath: ["Bundle.type = 'history'", "Bundle.entry.count() >= 2"]}
+
+  - name: Transaction with urn:uuid references
+    requires: {interaction: transaction}
+    request:
+      method: POST
+      path: ""
+      body:
+        resourceType: Bundle
+        type: transaction
+        entry:
+          - fullUrl: "urn:uuid:3f1c7c3e-0000-4000-8000-${uid}0000"
+            resource: {resourceType: Patient, name: [{family: "TxPatient${uid}"}], gender: male}
+            request: {method: POST, url: Patient}
+          - resource:
+              resourceType: Observation
+              status: final
+              code: {coding: [{system: "http://loinc.org", code: "8867-4", display: "Heart rate"}]}
+              subject: {reference: "urn:uuid:3f1c7c3e-0000-4000-8000-${uid}0000"}
+              effectiveDateTime: "${now}"
+              valueQuantity: {value: 72, unit: "/min", system: "http://unitsofmeasure.org", code: "/min"}
+            request: {method: POST, url: Observation}
+    expect:
+      status: 200
+      fhirpath:
+        - "Bundle.type = 'transaction-response'"
+        - "Bundle.entry.count() = 2"
+        - "Bundle.entry.all(response.status.startsWith('201'))"
+    save: tx
+
+  - name: Search Observation by patient with _include
+    requires: {interaction: transaction}  # uses the data created by the transaction step
+    request:
+      method: GET
+      path: Observation
+      params: {"subject:Patient.family": "TxPatient${uid}", "_include": "Observation:subject"}
+    expect:
+      status: 200
+      fhirpath:
+        - "Bundle.entry.where(search.mode = 'match').count() = 1"
+        - "Bundle.entry.where(search.mode = 'include').resource.ofType(Patient).exists()"
+
+  - name: Paging returns next link
+    request: {method: GET, path: Patient, params: {_count: "1"}}
+    expect: {status: 200, fhirpath: ["Bundle.link.where(relation = 'next').exists()"]}
+
+  - name: Invalid resource is rejected
+    continue_on_failure: true
+    request:
+      method: POST
+      path: Patient
+      body: {resourceType: Patient, gender: female, notAnElement: true}
+    expect: {status: [400, 422], fhirpath: ["OperationOutcome.issue.exists()"]}
+
+  - name: Delete
+    requires: {resource: Patient, interaction: delete}
+    request: {method: DELETE, path: "Patient/${created.body.id}"}
+    expect: {status: [200, 202, 204]}
+
+  - name: Read after delete is 410 Gone (or 404)
+    requires: {resource: Patient, interaction: delete}
+    request: {method: GET, path: "Patient/${created.body.id}"}
+    expect: {status: [410, 404]}

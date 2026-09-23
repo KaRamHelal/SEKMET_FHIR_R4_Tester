@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Subscriptions{% endblock %}
+{% block main %}
+<h1>Subscriptions</h1>
+<div class="split">
+  <div class="panel">
+    <h2>Hosted here (peers subscribe to us)</h2>
+    <p class="mute">Peers <code>POST {{ settings.base_url }}/Subscription</code> with a rest-hook channel; we notify on matching writes.</p>
+    <table><tr><th>id</th><th>Criteria</th><th>Endpoint</th><th>Status</th></tr>
+    {% for s in subs %}<tr><td class="mono"><a href="/ui/resources/Subscription/{{ s.id }}">{{ s.id[:8] }}</a></td><td class="mono">{{ s.criteria }}</td><td class="mono">{{ s.channel.endpoint }}</td>
+      <td><span class="pill {{ 'ok' if s.status == 'active' else 'bad' }}">{{ s.status }}</span>{% if s.error %}<div class="bad">{{ s.error }}</div>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="4" class="mute">None.</td></tr>{% endfor %}</table>
+    {% if peers %}
+    <h3>Register configured subscriptions on a peer</h3>
+    <form method="post" action="/ui/subscriptions/register" class="row"><div><select name="peer">{% for p in peers %}<option>{{ p }}</option>{% endfor %}</select></div><button>Register</button></form>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h2>Notifications received at /hooks</h2>
+    <table><tr><th>#</th><th>Time</th><th>Peer</th><th>Resource</th><th>Method</th></tr>
+    {% for n in notes %}<tr><td>{% if n.traffic_id %}<a href="/ui/traffic/{{ n.traffic_id }}">{{ n.id }}</a>{% else %}{{ n.id }}{% endif %}</td><td class="mono mute">{{ n.ts[11:19] }}</td><td>{{ n.peer }}</td>
+      <td class="mono">{{ n.resource_type or '(ping)' }}/{{ n.resource_id or '' }}{% if n.resource and n.resource.status %} <span class="mute">{{ n.resource.status }}</span>{% endif %}</td><td>{{ n.method }}</td></tr>
+    {% else %}<tr><td colspan="5" class="mute">None yet.</td></tr>{% endfor %}</table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block main %}<h1>Workflow {{ key }}</h1><div class="panel">{% include "partials/wf_result.html" %}</div>
+<p><a href="/ui/workflows?key={{ key }}">← back to workflows</a></p>{% endblock %}

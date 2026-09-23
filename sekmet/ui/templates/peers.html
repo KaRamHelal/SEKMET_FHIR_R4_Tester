@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Peers{% endblock %}
+{% block main %}
+<h1>Peers</h1>
+<p class="mute">Peers are configured in <code>settings.yaml</code>. <code>self</code> is the loopback peer (this server).</p>
+{% for n, p in peers %}
+<div class="panel" style="margin-bottom:16px">
+  <h2>{{ n }} <span class="mute mono" style="font-weight:400">{{ p.base_url }}</span></h2>
+  <p class="mute">auth <b>{{ p.auth.type }}</b>{% if p.auth.client_id %} ({{ p.auth.client_id }}){% endif %} · mode <b>{{ p.mode }}</b> · transactions {{ 'on' if p.use_transactions else 'off' }} · {{ p.subscribe|length }} subscription(s) configured</p>
+  <form method="post" action="/ui/peers/{{ n }}/test" hx-post="/ui/peers/{{ n }}/test" hx-target="#peer-{{ loop.index }}" hx-indicator="#pind-{{ loop.index }}">
+    <button class="ghost">Test connection &amp; capabilities</button> <span id="pind-{{ loop.index }}" class="htmx-indicator mute">testing…</span>
+  </form>
+  <div id="peer-{{ loop.index }}" style="margin-top:10px"></div>
+</div>
+{% endfor %}
+{% endblock %}

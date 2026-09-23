@@ -1,0 +1,24 @@
+name: Subscriptions - rest-hook round trip
+description: >
+  Registers an R4 rest-hook Subscription on the peer pointing at SEKMET's /hooks endpoint, triggers matching
+  and non-matching changes, and verifies notification delivery. Requires the peer to reach SEKMET's public_url.
+tags: [subscriptions]
+requires: {resource: Subscription, interaction: create}
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - name: Subscribe to this patient's encounters
+    subscribe: {criteria: "Encounter?patient=Patient/${reg.patient.id}"}
+    save: sub
+  - {name: Admit (matching change), action: adt.admit, args: {patient: "${reg.patient.id}"}, save: adm}
+  - name: Notification received for the encounter
+    wait_for:
+      notification: {resource_type: Encounter, resource_id: "${adm.encounter.id}"}
+      timeout: 30
+    save: note
+  - name: Notified resource is the in-progress encounter
+    assert: {on: note, fhirpath: ["Encounter.status = 'in-progress'"]}
+  - {name: Discharge (matching change), action: adt.discharge, args: {encounter: "${adm.encounter.id}"}}
+  - name: Second notification with finished status
+    wait_for:
+      notification: {resource_type: Encounter, fhirpath: "Encounter.status = 'finished'"}
+      timeout: 30

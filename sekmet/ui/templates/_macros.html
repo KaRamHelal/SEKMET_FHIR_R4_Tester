@@ -1,0 +1,22 @@
+{% macro status_pill(s) -%}
+{% if s is none %}<span class="pill bad">ERR</span>{% elif s < 300 %}<span class="pill ok">{{ s }}</span>{% elif s < 400 %}<span class="pill">{{ s }}</span>{% else %}<span class="pill bad">{{ s }}</span>{% endif %}
+{%- endmacro %}
+{% macro run_pill(s) -%}
+<span class="pill {{ 'ok' if s == 'passed' else 'warn' if s == 'skipped' else 'bad' }}">{{ s }}</span>
+{%- endmacro %}
+{% macro traffic_table(rows) -%}
+<div class="scroll"><table>
+<tr><th>#</th><th>Time</th><th>Dir</th><th>Peer / client</th><th>Request</th><th>Status</th><th>ms</th></tr>
+{% for t in rows %}
+<tr>
+  <td><a href="/ui/traffic/{{ t.id }}">{{ t.id }}</a></td>
+  <td class="mono mute">{{ t.ts[11:19] }}</td>
+  <td>{{ '→' if t.direction == 'outbound' else '←' }} {{ t.direction }}</td>
+  <td class="mono">{{ (t.peer or '')[:40] }}</td>
+  <td class="mono"><a href="/ui/traffic/{{ t.id }}">{{ t.method }} {{ t.url[:90] }}</a>{% if t.note %}<div class="mute">{{ t.note[:140] }}</div>{% endif %}</td>
+  <td>{{ status_pill(t.status) }}</td>
+  <td class="mono mute">{{ t.duration_ms or '' }}</td>
+</tr>
+{% else %}<tr><td colspan="7" class="mute">No traffic yet.</td></tr>{% endfor %}
+</table></div>
+{%- endmacro %}

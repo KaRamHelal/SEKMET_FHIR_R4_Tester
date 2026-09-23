@@ -1,0 +1,31 @@
+name: Radiology - order, imaging study, report
+description: Imaging ServiceRequest, ImagingStudy with DICOM UIDs, final radiology DiagnosticReport with presentedForm.
+tags: [orders, radiology]
+steps:
+  - {name: Register patient, action: adt.register_patient, save: reg}
+  - {name: Outpatient visit, action: adt.outpatient_visit, args: {patient: "${reg.patient.id}"}, save: visit}
+  - name: Order chest X-ray
+    action: orders.imaging_order
+    args: {patient: "${reg.patient.id}", encounter: "${visit.encounter.id}", procedure: "36643-5"}
+    save: order
+  - {name: Accept, action: orders.accept, args: {service_request: "${order.service_request.id}"}}
+  - name: Acquire images
+    action: orders.imaging_study
+    args: {service_request: "${order.service_request.id}"}
+    save: study
+    expect: {on: imaging_study, fhirpath: ["ImagingStudy.status = 'available'", "ImagingStudy.series.instance.count() = 2"]}
+  - name: Radiology report
+    action: orders.imaging_report
+    args: {service_request: "${order.service_request.id}"}
+    save: rep
+  - name: Report links to study and has a document
+    request: {method: GET, path: "DiagnosticReport/${rep.diagnostic_report.id}"}
+    expect:
+      status: 200
+      fhirpath:
+        - "DiagnosticReport.category.coding.code contains 'RAD'"
+        - "DiagnosticReport.imagingStudy.reference.contains('ImagingStudy/${study.imaging_study.id}')"
+        - "DiagnosticReport.presentedForm.data.exists()"
+  - name: ImagingStudy searchable by basedon
+    request: {method: GET, path: ImagingStudy, params: {basedon: "ServiceRequest/${order.service_request.id}"}}
+    expect: {status: 200, fhirpath: ["Bundle.entry.where(search.mode = 'match').count() = 1"]}

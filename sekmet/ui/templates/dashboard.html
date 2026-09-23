@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% from "_macros.html" import traffic_table, run_pill %}
+{% block title %}Dashboard{% endblock %}
+{% block main %}
+<h1>Dashboard</h1>
+<div class="grid">
+  <div class="panel">
+    <h2>Local store</h2>
+    <div class="stat">{% for t, c in counts.items() %}<a href="/ui/resources?type={{ t }}">{{ t }}<b>{{ c }}</b></a>{% else %}<span class="mute">Empty. Run <a href="/ui/workflows?key=adt.facility">adt.facility</a> or <code>sekmet seed</code>.</span>{% endfor %}</div>
+  </div>
+  <div class="panel">
+    <h2>Peers</h2>
+    <table>{% for n, p in peers %}<tr><td><b>{{ n }}</b></td><td class="mono">{{ p.base_url }}</td><td>{{ p.auth.type }}</td><td>{{ p.mode }}</td></tr>{% endfor %}</table>
+    <p class="mute" style="margin-bottom:0">FHIR endpoint for peers to call: <code>{{ settings.base_url }}</code></p>
+  </div>
+  <div class="panel">
+    <h2>Recent scenario runs</h2>
+    <table>{% for r in runs %}<tr><td><a href="/ui/runs/{{ r.id }}">{{ r.scenario }}</a></td><td>{{ r.peer }}</td><td>{{ run_pill(r.status) }}</td><td class="mute mono" style="white-space:nowrap">{{ r.ts[5:16]|replace('T', ' ') }}</td></tr>{% else %}<tr><td class="mute">No runs yet — <a href="/ui/scenarios">run a scenario</a>.</td></tr>{% endfor %}</table>
+  </div>
+  <div class="panel">
+    <h2>Simulator activity</h2>
+    <table>{% for s in sim %}<tr><td class="mono mute">{{ s.ts[11:19] }}</td><td>{{ s.action }}</td><td class="mono"><a href="/ui/resources/{{ s.subject }}">{{ s.subject }}</a></td><td class="{{ 'ok' if s.ok else 'bad' }}">{{ s.detail[:80] }}</td></tr>{% else %}<tr><td class="mute">Nothing simulated yet. Inbound orders, appointments, prescriptions and claims are auto-fulfilled.</td></tr>{% endfor %}</table>
+  </div>
+</div>
+<div class="panel" style="margin-top:16px">
+  <h2>Latest traffic <a class="mute" style="font-weight:400" href="/ui/traffic">all →</a></h2>
+  {{ traffic_table(traffic) }}
+</div>
+{% endblock %}
